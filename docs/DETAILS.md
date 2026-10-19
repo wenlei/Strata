@@ -880,6 +880,9 @@ print(r.choices[0].message.content)
   Without a setting the model uses its own default, **high**. `none` answers at once (fastest); `low` keeps the thinking
   short. The levels are instructions the model was trained with, not a hard token limit: on easy questions all three
   think briefly, on hard ones `high` thinks longest and is most accurate.
+  **Raw thinking tags (opt-in):** `"control_tags": true` in `strata-<model>.json` puts the thinking back into `content`
+  as `<think>...</think>` for OpenAI chat completions, instead of `reasoning_content` (the default). Tool calls stay
+  structured, and structured `response_format` requests keep the default. Restart the model after the change.
   To start with another level for every request that names none, put `"reasoning_effort": "low"` (or `none`, `medium`,
   `high`) in `strata-<model>.json`, outside `"args"` (#1641): the engine has no such option, and `--reasoning-effort` in
   `"args"` is moved to this key with a note at startup. The web app's shared Chat settings ("Use for other apps too") and a

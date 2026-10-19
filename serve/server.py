@@ -76,6 +76,7 @@ from serve.structured import StructuredOutputError, prepare_format, validated_js
 from serve import responses as responses_api  # noqa: E402
 from serve.responses import ResponsesError, error_body as responses_error_body  # noqa: E402
 from serve import images as images_api  # noqa: E402
+from serve import lite_agent  # noqa: E402
 
 IM_END = "<|im_end|>"
 IMAGE_PAD = "<|image_pad|>"
@@ -3358,6 +3359,7 @@ class Service:
         self.shared = {}                              # the web app's Chat settings for every client (POST /settings)
         self.shared_path = None                       # where they are kept between starts (next to the config)
         self.config_effort = None                     # #1641: the config's "reasoning_effort": the level for requests with none
+        self.control_tags = False                     # opt-in: thinking back in content as <think>...</think>
         self.keep_awake = None                        # #1727 (opt-in): serve.keepawake.KeepAwake, the config's "prevent_sleep"
         self.fifo = threading.Lock()
         self.slot_save_path = None                    # --slot-save-path: /slots/0?action=save|restore (off when None)
@@ -3404,6 +3406,8 @@ class Service:
         self.api_requests = collections.deque(maxlen=100)  # bounded I/O in memory; no headers or API keys
         self.request_trace = threading.local()
         self.history = collections.deque(maxlen=500)    # the last finished requests, newest last (GET /metrics)
+        self.tasks = {}                                 # running API requests by id (GET /v1/tasks)
+        self.task_history = collections.deque(maxlen=100)  # finished API requests, newest last
         # since the server started (the Monitor's totals, issue #35)
         self.totals = {"since": time.time(), "requests": 0, "prompt_tokens": 0, "reused": 0, "output_tokens": 0,
                        "prompt_ms": 0.0, "decode_ms": 0.0,
@@ -4073,6 +4077,63 @@ class Service:
             self.api_requests.append(record)
         self.request_trace.record = record
         return record
+
+    def begin_task(self, path, req, client=None, session=None):
+        """Track one API request for GET /v1/tasks; its cancel Event stops that request, not the model."""
+        kind = {"/v1/chat/completions": "chat", "/v1/messages": "messages",
+                "/v1/responses": "responses", "/v1/images/generations": "image"}.get(path, "request")
+        task = {"id": uuid.uuid4().hex[:12], "path": path, "kind": kind,
+                "model": self.model_for(req) if isinstance(req, dict) else self.model,
+                "started_at": time.time(), "state": "running", "stop_requested": False,
+                "stream": bool(req.get("stream")) if isinstance(req, dict) else False,
+                "client": client[0] if client else None,
+                "session": session or (client[0] if client else None) or "default",
+                "cancel": threading.Event()}
+        with self.status_lock:
+            self.tasks[task["id"]] = task
+        return task
+
+    def finish_task(self, task, state=None, error=None):
+        with self.status_lock:
+            self.tasks.pop(task["id"], None)
+            done = {k: v for k, v in task.items() if k != "cancel"}
+            done["finished_at"] = time.time()
+            done["duration_s"] = round(done["finished_at"] - done["started_at"], 1)
+            if error:
+                done["error"] = str(error)[:500]
+            done["state"] = state or ("stopped" if done.get("stop_requested") else "done")
+            self.task_history.append(done)
+        return done
+
+    def stop_task(self, task_id):
+        with self.status_lock:
+            task = self.tasks.get(task_id)
+            if task is not None:
+                task["stop_requested"] = True
+                task["state"] = "stopping"
+                task["cancel"].set()
+                return {"id": task_id, "state": "stopping", "summary": "stop requested"}
+            done = next((t for t in reversed(self.task_history) if t["id"] == task_id), None)
+            if done is not None:
+                return {"id": task_id, "state": done.get("state"), "summary": "already stopped or finished"}
+        return None
+
+    def clear_finished_tasks(self):
+        with self.status_lock:
+            n = len(self.task_history)
+            self.task_history.clear()
+        return n
+
+    def tasks_view(self):
+        now = time.time()
+        with self.status_lock:
+            active = []
+            for task in self.tasks.values():
+                shown = {k: v for k, v in task.items() if k != "cancel"}
+                shown["elapsed_s"] = round(now - task["started_at"], 1)
+                active.append(shown)
+            finished = list(self.task_history)[-30:][::-1]
+        return {"tasks": active, "finished": finished, "now": now}
 
     def request_records(self, request_id=None):
         with self.status_lock:
@@ -5272,9 +5333,10 @@ def prompt_progress(svc: Service):
             "time_ms": int(getattr(engine, "progress_ms", 0) or 0)}
 
 
-def openai_chunks(svc: Service, req: dict, ids, thinking, tools, max_new, cancel, run=None, force=None):
+def openai_chunks(svc: Service, req: dict, ids, thinking, tools, max_new, cancel, run=None, force=None, tags=False):
     """`run`: the events to send instead of Service.run's (run_with_mcp); its ("mcp", {...}) items become chunks with
-    an empty delta and a `strata_mcp` field, which only the web app reads.  `force`: see Service.run."""
+    an empty delta and a `strata_mcp` field, which only the web app reads.  `force`: see Service.run.  `tags`: put the
+    thinking back into `content` as `<think>...</think>` (the config's "control_tags") instead of `reasoning_content`."""
     cid, created = "chatcmpl-" + uuid.uuid4().hex[:24], int(time.time())
     model = svc.model_for(req)
     # llama.cpp's flag, and its default: a client that wants prompt progress asks for it, and nothing changes for one
@@ -5284,6 +5346,15 @@ def openai_chunks(svc: Service, req: dict, ids, thinking, tools, max_new, cancel
     def chunk(delta, finish=None):
         return {"id": cid, "object": "chat.completion.chunk", "created": created, "model": model,
                 "choices": [{"index": 0, "delta": delta, "finish_reason": finish}]}
+
+    think_open, think_closed = False, False
+
+    def close_reasoning():
+        nonlocal think_closed
+        if tags and think_open and not think_closed:
+            think_closed = True
+            return chunk({"content": "</think>"})
+        return None
 
     yield chunk({"role": "assistant", "content": ""})
     calls = 0
@@ -5302,10 +5373,21 @@ def openai_chunks(svc: Service, req: dict, ids, thinking, tools, max_new, cancel
         elif kind == "event":
             ev: Event = x
             if ev.kind == "reasoning" and ev.text:
-                yield chunk({"reasoning_content": ev.text})
+                if tags:
+                    prefix = "<think>" if not think_open or think_closed else ""
+                    think_open, think_closed = True, False
+                    yield chunk({"content": prefix + ev.text})
+                else:
+                    yield chunk({"reasoning_content": ev.text})
             elif ev.kind == "content" and ev.text:
+                closed = close_reasoning()
+                if closed is not None:
+                    yield closed
                 yield chunk({"content": ev.text})
             elif ev.kind == "tool_start":
+                closed = close_reasoning()
+                if closed is not None:
+                    yield closed
                 streamed[ev.call.id] = calls
                 calls += 1
                 yield chunk({"tool_calls": [{"index": streamed[ev.call.id], "id": ev.call.id, "type": "function",
@@ -5315,12 +5397,18 @@ def openai_chunks(svc: Service, req: dict, ids, thinking, tools, max_new, cancel
             elif ev.kind == "tool_call" and ev.call.id in streamed:
                 finished.add(ev.call.id)
             elif ev.kind == "tool_call":
+                closed = close_reasoning()
+                if closed is not None:
+                    yield closed
                 yield chunk({"tool_calls": [{"index": calls, "id": ev.call.id, "type": "function",
                                              "function": {"name": ev.call.name,
                                                           "arguments": json.dumps(ev.call.arguments, ensure_ascii=False)}}]})
                 calls += 1
         else:
             # a streamed call without its final tool_call is one the output ended inside: not "tool_calls" (#211)
+            closed = close_reasoning()
+            if closed is not None:
+                yield closed
             whole = calls and streamed.keys() <= finished
             finish = "tool_calls" if whole and x["finish"] == "stop" else {"cancel": "stop"}.get(x["finish"], x["finish"])
             last = chunk({}, finish)
@@ -5534,6 +5622,7 @@ def make_handler(svc: Service):
         protocol_version = "HTTP/1.0"                       # SSE ends by closing the connection
 
         record = None                                       # #332: this request's monitor record, if kept
+        task = None                                         # this request's task (GET /v1/tasks)
         watch_done = None                                   # #430 #431: stops this request's disconnect watcher
         cancel_event = None                                 # active generation owned by this handler
         body_read = False                                   # whether a handler took this request's body
@@ -5804,6 +5893,10 @@ def make_handler(svc: Service):
 
         def do_GET(self):
             path = self.path.split("?")[0].rstrip("/")
+            if path.startswith("/v1/agent/"):
+                if self._authorized():
+                    lite_agent.proxy(self, "GET")
+                return
             if path.startswith("/fonts/"):
                 # the web app's font (Outfit, OFL: serve/web/fonts); the page falls back to the system font
                 name = path[len("/fonts/"):]
@@ -6140,6 +6233,18 @@ def make_handler(svc: Service):
             elif path == "/v1/status":
                 if self._authorized():
                     self._json(200, svc.v1_status())
+            elif path == "/v1/tasks":
+                if self._authorized():
+                    self._json(200, svc.tasks_view())
+            else:
+                self._json(404, {"error": {"message": "not found"}})
+
+        def do_DELETE(self):
+            if not self._authorized():
+                return
+            path = self.path.split("?")[0].rstrip("/")
+            if path.startswith("/v1/agent/"):
+                lite_agent.proxy(self, "DELETE")
             else:
                 self._json(404, {"error": {"message": "not found"}})
 
@@ -6154,7 +6259,11 @@ def make_handler(svc: Service):
                 return
             path = self.path.split("?")[0].rstrip("/")   # issue #55: Claude Code posts /v1/messages?beta=true
             path = V1_V1_ALIASES.get(path, path)         # an Anthropic client given ".../v1" as its base posts /v1/v1/messages
+            self.task = None
             if path.startswith("/v1/") and self._foreign_page():
+                return
+            if path.startswith("/v1/agent/"):
+                lite_agent.proxy(self, "POST")
                 return
             if path == "/settings":
                 self._settings()
@@ -6251,8 +6360,23 @@ def make_handler(svc: Service):
                     except EngineDied as e:
                         self._json(503, {"error": {"type": "server_error", "message": str(e)}})
                     return
+                if path == "/v1/tasks/clear":
+                    self._json(200, {"cleared": svc.clear_finished_tasks()})
+                    return
+                if path.startswith("/v1/tasks/") and path.rsplit("/", 1)[-1] in ("stop", "cancel"):
+                    task_id = path.split("/")[3]
+                    result = svc.stop_task(task_id)
+                    if result is None:
+                        self._json(404, {"error": {"message": "task not found"}})
+                    else:
+                        self._json(200, result)
+                    return
+                session = (self.headers.get("X-Strata-Session") or "").strip()[:64] or None
                 if path in ("/v1/chat/completions", "/v1/messages", "/v1/responses"):
                     self.record = svc.begin_request(path, req)
+                    self.task = svc.begin_task(path, req, self.client_address, session)
+                elif path == "/v1/images/generations":
+                    self.task = svc.begin_task(path, req, self.client_address, session)
                 if path == "/v1/responses":
                     self._responses(req)
                 elif path.startswith("/slots/"):
@@ -6336,6 +6460,16 @@ def make_handler(svc: Service):
                         record["finished_at"] = time.time()
                         record["state"] = "error" if record.get("error") else record.get("outcome", "completed")
                     svc.request_trace.record = None
+                task = self.task
+                if task is not None:
+                    state, error = ("stopped" if task.get("stop_requested") else "done"), None
+                    if record is not None:
+                        if record.get("error"):
+                            state, error = "error", record.get("error")
+                        elif record.get("outcome") == "disconnected":
+                            state = "stopped"
+                    svc.finish_task(task, state, error)
+                    self.task = None
 
         def _images(self, req):
             """POST /v1/images/generations (serve/images.py): one sd-cli job in the GPU's turn."""
@@ -6347,7 +6481,7 @@ def make_handler(svc: Service):
                 return
             job = images_api.parse_request(req, gen.cfg)        # ImageRequestError (a ValueError): 400
             svc.last_request_at = time.time()
-            cancel = threading.Event()
+            cancel = self.task["cancel"] if self.task else threading.Event()
             self._watch_client(cancel)
             print(f"[strata] image: {job['width']}x{job['height']}, n={job['n']}, {job['steps']} steps, "
                   f"seed {job['seed']}", flush=True)
@@ -6592,13 +6726,14 @@ def make_handler(svc: Service):
             svc.reasoning_budget(req)                         # a bad value is a 400 before anything is sent
             stop_strings(req)                                 # ... and so is a bad stop / stop_sequences
             check_request_sampling(req)                       # ... and a sampling field of the wrong type
-            cancel = threading.Event()
+            cancel = self.task["cancel"] if self.task else threading.Event()
             self._watch_client(cancel)                       # #430 #431 (#1999: before prepare, which can take long)
             ids, thinking, max_new = svc.prepare(messages, tools, kw, max_new, force=force, req=req, cancel=cancel)
             _debug_req("openai", req, messages, tools, max_new, thinking, len(ids))
             run = run_with_mcp(svc, svc.mcp, messages, tools, kw, ids, thinking, max_new, max_req, req, cancel,
                                {t["name"] for t in extra}) if use_mcp else None
-            chunks = openai_chunks(svc, req, ids, thinking, tools, max_new, cancel, run=run, force=force)
+            chunks = openai_chunks(svc, req, ids, thinking, tools, max_new, cancel, run=run, force=force,
+                                   tags=svc.control_tags and validator is None)
             if validator is not None:
                 chunks = structured_chunks(chunks, validator)
             chunks = self._capture(chunks, "openai")
@@ -6657,7 +6792,7 @@ def make_handler(svc: Service):
                 return self._json(e.status, e.body())
             if title is not None:
                 return self._responses_ready(req, title)
-            cancel = threading.Event()
+            cancel = self.task["cancel"] if self.task else threading.Event()
             self._watch_client(cancel)                       # #430 #431 (#1999: before prepare, which can take long)
             try:
                 ids, thinking, tools, max_new, asm, validator, req = self._responses_prepare(req, cancel)
@@ -6828,7 +6963,7 @@ def make_handler(svc: Service):
             svc.reasoning_budget(req)                         # a bad value is a 400 before anything is sent
             stop_strings(req)                                 # ... and so is a bad stop / stop_sequences
             check_request_sampling(req)                       # ... and a sampling field of the wrong type
-            cancel = threading.Event()
+            cancel = self.task["cancel"] if self.task else threading.Event()
             self._watch_client(cancel)                       # #430 #431 (#1999: before prepare, which can take long)
             ids, thinking, max_new = svc.prepare(messages, tools, kw, max_new, force=force, req=req, cancel=cancel)
             _debug_req("anthropic", req, messages, tools, max_new, thinking, len(ids))
@@ -7849,6 +7984,12 @@ def main(argv=None, *, lifecycle_event=None, interrupt_exit_code: int = 0) -> in
         if svc.config_effort:
             print(f"[strata] thinking level: {svc.config_effort} (reasoning_effort in the config; a request, or the "
                   "Chat settings shared with other apps, can set its own)", flush=True)
+    if cfg.get("control_tags") is not None and not isinstance(cfg["control_tags"], bool):
+        raise SystemExit(f"[strata] config \"control_tags\" must be true or false, not {cfg['control_tags']!r}")
+    svc.control_tags = cfg.get("control_tags") is True    # opt-in: thinking back in content as <think>...</think>
+    if svc.control_tags:
+        print("[strata] control_tags: thinking is sent in content as <think>...</think> (OpenAI chat completions)",
+              flush=True)
     svc.codex_thread_titles = cfg.get("codex_thread_titles") is True    # #923: opt-in, off by default
     svc.codex_compaction_cache = cfg.get("codex_compaction_cache") is True   # #924: opt-in, off by default
     try:
@@ -7975,6 +8116,9 @@ def main(argv=None, *, lifecycle_event=None, interrupt_exit_code: int = 0) -> in
         atexit.register(hub.close)                      # the servers Strata started end with it
     httpd = serve(svc, host=a.host, port=a.port)
     bound_port = httpd.server_address[1]               # --port 0: report the port the OS actually assigned
+    lite_agent.start(svc, a.host, a.port)
+    import atexit
+    atexit.register(lite_agent.stop)
     svc.start_idle_unload()
     svc.start_vision_idle()
     here = "127.0.0.1" if a.host in ("0.0.0.0", "", "::") else a.host
@@ -8046,7 +8190,8 @@ def main(argv=None, *, lifecycle_event=None, interrupt_exit_code: int = 0) -> in
                 print(f"[strata] drain deadline expired; cancelling {cancelled} owned request(s) ...", flush=True)
                 svc.wait_for_drain(5)
                 drained = False
-        closers = [httpd.shutdown, getattr(engine, "close", None), vision.shutdown if vision else None,
+        closers = [httpd.shutdown, lite_agent.stop, getattr(engine, "close", None),
+                   vision.shutdown if vision else None,
                    hub.close if hub is not None else None]
         try:
             for close in filter(None, closers):
