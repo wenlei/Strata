@@ -13,8 +13,10 @@ import hmac
 import json
 import os
 import secrets
+import shutil
 import string
 import socket
+import subprocess
 import sys
 import threading
 import time
@@ -37,6 +39,7 @@ DEFAULT_PORT = 8090
 MAX_BODY = 1 << 20
 HOSTS = ("127.0.0.1", "0.0.0.0")
 ENGINE_DEFAULTS = {"spec": 4, "spec_min_p": 0.5}
+_FOLDER_LOCK = threading.Lock()
 
 
 def lan_addresses() -> list[str]:
@@ -485,6 +488,54 @@ class App:
         body["port"] = port
         return body
 
+    def pick_folder(self, initial: str = "") -> dict:
+        """Open the host's native folder picker (Windows). The page runs locally, so this is the same dialog Explorer uses."""
+        if os.name != "nt":
+            raise ValueError("the native folder picker is available on Windows; type the folder path")
+        if not _FOLDER_LOCK.acquire(blocking=False):
+            raise ValueError("a folder picker is already open")
+        try:
+            powershell = shutil.which("powershell.exe") or shutil.which("powershell")
+            if not powershell:
+                bundled = Path(os.environ.get("SystemRoot", r"C:\Windows")) / "System32" / "WindowsPowerShell" / "v1.0" / "powershell.exe"
+                if bundled.is_file():
+                    powershell = str(bundled)
+            if not powershell:
+                raise ValueError("PowerShell was not found; type the folder path")
+            script = r"""
+Add-Type -AssemblyName System.Windows.Forms
+[Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false)
+$owner = New-Object System.Windows.Forms.Form
+$owner.Text = 'Lumen'
+$owner.ShowInTaskbar = $false
+$owner.TopMost = $true
+$owner.WindowState = 'Minimized'
+$owner.Show()
+$dialog = New-Object System.Windows.Forms.FolderBrowserDialog
+$dialog.Description = '选择模型可访问的本地文件夹'
+$dialog.ShowNewFolderButton = $true
+if ($env:LUM_FOLDER_INITIAL) { $dialog.SelectedPath = $env:LUM_FOLDER_INITIAL }
+$result = $dialog.ShowDialog($owner)
+$owner.Close()
+if ($result -eq [System.Windows.Forms.DialogResult]::OK) { [Console]::Out.Write($dialog.SelectedPath) }
+"""
+            env = dict(os.environ, LUM_FOLDER_INITIAL=initial or "")
+            proc = subprocess.run(
+                [powershell, "-NoProfile", "-STA", "-Command", script],
+                env=env,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=300,
+            )
+            if proc.returncode != 0:
+                detail = (proc.stderr or proc.stdout or "the folder picker failed").strip()
+                raise ValueError(detail[:300])
+            return {"path": (proc.stdout or "").strip()}
+        finally:
+            _FOLDER_LOCK.release()
+
     def browse(self, path: str = "") -> dict:
         path = str(path or "").strip()
         if not path:
@@ -715,6 +766,8 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(200, self._app().agent_session(query.get("id", [""])[0]))
             elif path == "/api/browse":
                 self._json(200, self._app().browse(query.get("path", [""])[0]))
+            elif path == "/api/pick-folder":
+                self._json(200, self._app().pick_folder(query.get("initial", [""])[0]))
             elif path == "/api/sessions":
                 self._json(200, self._app().sessions())
             elif path == "/api/memory":

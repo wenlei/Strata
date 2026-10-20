@@ -7,7 +7,7 @@ working.
 
 Environment:
   STRATA_AGENT_PYTHON       python.exe that can import lite_strata_agent (default: this python, else the sibling venv)
-  STRATA_AGENT_WORKSPACE    workspace root (default: the user's home)
+  STRATA_AGENT_WORKSPACE    workspace root (default: %USERPROFILE%/lumWorkspace)
   STRATA_AGENT_DATA_DIR     agent SQLite/artifact directory (default: the agent's platform default)
   STRATA_AGENT_LOG          sidecar log file (default: <data dir>/agent.log or the temp directory)
   STRATA_AGENT_APP_APK      APK served at /v1/agent/app/apk
@@ -100,7 +100,7 @@ def start(svc: Any, host: str, port: int) -> Sidecar | None:
     agent_port = _free_port()
     host_for_agent = "127.0.0.1" if host in ("0.0.0.0", "::", "") else host
     keys = _keys(svc)
-    workspace = os.environ.get("STRATA_AGENT_WORKSPACE", "").strip() or str(Path.home())
+    workspace = os.environ.get("STRATA_AGENT_WORKSPACE", "").strip() or str(Path.home() / "lumWorkspace")
     command = [
         python, "-m", "lite_strata_agent", "serve",
         "--host", "127.0.0.1", "--port", str(agent_port),
@@ -189,7 +189,7 @@ def proxy(handler: Any, method: str) -> None:
 
     body = handler._body() if method == "POST" else None
     headers = {}
-    for name in ("Authorization", "x-api-key", "Accept", "Last-Event-ID", "Content-Type"):
+    for name in ("Authorization", "x-api-key", "Accept", "Last-Event-ID", "Content-Type", "X-Lum-Filename", "Content-Disposition"):
         value = handler.headers.get(name)
         if value:
             headers[name] = value

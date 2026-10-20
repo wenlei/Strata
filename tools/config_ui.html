@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Strata Settings</title>
+<title>Lumen Settings</title>
 <style>
 :root{
   --bg:#f5f3ef; --card:#fffdf9; --ink:#1d1c19; --muted:#6c6860; --line:#e4ded4;
@@ -80,10 +80,14 @@ input:focus,select:focus,textarea:focus{outline:2px solid color-mix(in srgb,var(
 .chat-row:hover{background:var(--pill)}
 .chat-row .small{display:block;margin-top:2px}
 .chat-msg{padding:10px 12px;border-radius:10px;background:var(--pill);margin:0 0 8px;white-space:pre-wrap}
-.scope-row{display:grid;grid-template-columns:1.1fr 2fr 90px 70px 70px 90px;gap:8px;align-items:end;
-  border-bottom:1px solid var(--line);padding:9px 0}
-.scope-row:last-child{border-bottom:0}
-@media(max-width:820px){.scope-row{grid-template-columns:1fr 1fr}}
+.scope-row{display:grid;grid-template-columns:minmax(150px,.8fr) minmax(320px,2fr) auto;gap:10px 12px;
+  align-items:end;border:1px solid var(--line);border-radius:12px;padding:12px;margin:0 0 10px;
+  background:color-mix(in srgb,var(--card) 92%,var(--pill))}
+.scope-row .scope-options{grid-column:1/-1;display:flex;gap:14px;align-items:center;flex-wrap:wrap;
+  border-top:1px solid var(--line);padding-top:9px}
+.scope-row .scope-options .field{min-width:130px;margin:0}
+.scope-row .scope-remove{justify-self:end}
+@media(max-width:820px){.scope-row{grid-template-columns:1fr}.scope-row .scope-remove{grid-column:1;justify-self:start}}
 .modal{position:fixed;inset:0;background:rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;z-index:60}
 .modal[hidden]{display:none}
 .modal-card{background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);
@@ -111,7 +115,7 @@ input:focus,select:focus,textarea:focus{outline:2px solid color-mix(in srgb,var(
 </head>
 <body>
 <header>
-  <div class="brand">Strata <span>Settings</span></div>
+  <div class="brand">Lumen <span>Settings</span></div>
   <div class="pill" id="status-pill">checking...</div>
   <div class="spacer"></div>
   <a class="btn" id="chat-link" href="http://127.0.0.1:8080/" target="_blank" rel="noopener">Open chat</a>
@@ -212,7 +216,7 @@ input:focus,select:focus,textarea:focus{outline:2px solid color-mix(in srgb,var(
         <label class="field"><span>Min draft probability (--spec-min-p)</span><input id="c-specp" type="number" min="0" max="1" step="0.05"></label>
       </div>
       <div class="three">
-        <label class="field"><span>Context tokens (--max-context)</span><input id="c-context" type="number" min="8192" max="262144" step="1024"></label>
+        <label class="field"><span>Context (K) (--max-context) <small>1K = 1024 tokens</small></span><input id="c-context" type="number" min="8" max="512" step="1" placeholder="128"></label>
         <label class="field"><span>KV cache (--kv)</span><select id="c-kv"><option value="int8">int8</option><option value="q4_0">q4_0</option><option value="k8v4">k8v4</option></select></label>
         <label class="field"><span>GPU index</span><input id="c-gpu" type="number" min="0" step="1" placeholder="auto"></label>
       </div>
@@ -284,12 +288,30 @@ input:focus,select:focus,textarea:focus{outline:2px solid color-mix(in srgb,var(
       <div class="note">Raise max rounds when a task legitimately uses many tools; lower it to fail loops sooner. Default is 16.</div>
       <div class="row"><button class="btn primary" id="p-limits-save">Save limits</button></div>
     </div>
+    <div class="card">
+      <h2>Sandbox <small>Shell execution</small></h2>
+      <div class="three">
+        <label class="field"><span>Mode</span><select id="p-sandbox-mode">
+          <option value="off">Off (host shell)</option>
+          <option value="docker">Docker (recommended)</option>
+        </select></label>
+        <label class="field"><span>Image</span><input id="p-sandbox-image" type="text" placeholder="debian:bookworm-slim"></label>
+      </div>
+      <div class="three">
+        <label class="field"><span>Memory MB</span><input id="p-sandbox-memory" type="number" min="256" max="16384" step="256"></label>
+        <label class="field"><span>CPUs</span><input id="p-sandbox-cpus" type="number" min="0.1" max="8" step="0.1"></label>
+        <label class="small"><input type="checkbox" id="p-sandbox-network"> Allow network</label>
+      </div>
+      <div class="small muted" id="p-sandbox-workspace">Workspace: ...</div>
+      <div class="note">Shell runs in a throwaway container without root or a writable system disk. The workspace is mounted at /workspace; access scopes are mounted at /scopes/&lt;name&gt;. Allow network lets the container reach your LAN and the internet; keep it off unless the task needs it. Requires Docker Desktop + WSL2 (Windows) or Docker Engine.</div>
+      <div class="row"><button class="btn primary" id="p-sandbox-save">Save sandbox</button></div>
+    </div>
   </section>
 
   <section id="tab-access">
     <div class="card">
       <h2>Access permissions <small>sandbox scopes</small></h2>
-      <div class="note">Only these folders are mounted into the sandbox. Outside them, read and write are both impossible. <b>ro</b> is read-only; <b>rw</b> allows writes. These permissions are stored now; the Docker sandbox runner is the next step.</div>
+      <div class="note">These are host folders (Windows paths or NAS shares), not paths inside the sandbox. The model accesses them by host path; the Docker shell sees them at /scopes/&lt;name&gt;. <b>ro</b> is read-only; <b>rw</b> allows writes. File tools enforce the same modes. Keep scopes outside the workspace; the workspace itself is read-write.</div>
       <div id="scope-list"><p class="muted">Checking...</p></div>
         <div class="row">
           <button class="btn" id="scope-add">Add folder</button>
@@ -392,7 +414,7 @@ if (urlLang === "en" || urlLang === "zh") localStorage.setItem(LANG_KEY, urlLang
 let LANG = localStorage.getItem(LANG_KEY) || "en";
 let translating = false;
 const ZH = {
-  "Strata Settings": "Strata 设置",
+  "Lumen Settings": "Lumen 设置",
   "Settings": "设置",
   "Language": "语言",
   "Open chat": "打开聊天",
@@ -449,7 +471,8 @@ const ZH = {
   "MTP": "MTP",
   "Draft tokens (--spec)": "草稿 token 数（--spec）",
   "Min draft probability (--spec-min-p)": "最小草稿概率（--spec-min-p）",
-  "Context tokens (--max-context)": "上下文 token 数（--max-context）",
+  "Context (K) (--max-context)": "上下文（K，--max-context）",
+  "1K = 1024 tokens": "1K = 1024 个 token",
   "KV cache (--kv)": "KV 缓存（--kv）",
   "GPU index": "GPU 索引",
   "Save engine settings": "保存引擎设置",
@@ -457,6 +480,28 @@ const ZH = {
   "Server settings": "服务器设置",
   "documented keys of the run config": "运行配置的已知键",
   "Save server settings": "保存服务器设置",
+  "on": "开启",
+  "off": "关闭",
+  "default": "默认",
+  "Default temperature for requests that send none (0 = greedy; without it the model card's: 1.0 thinking, 0.7 not)": "未指定采样温度时的默认值（0 = 贪心；不设置时用模型卡：思考 1.0，非思考 0.7）",
+  "Default top_p for requests that send none": "未指定 top_p 时的默认值",
+  "Default top_k for requests that send none (1-64)": "未指定 top_k 时的默认值（1–64）",
+  "Default min_p for requests that send none": "未指定 min_p 时的默认值",
+  "Put thinking back into content as <think>...</think> (OpenAI chat only)": "把思考内容以 <think>…</think> 放回正文（仅 OpenAI Chat）",
+  "Cap the thinking of every request at this many tokens (0 or empty: no cap)": "每次请求的思考 token 上限（0 或留空：不限）",
+  "Shorten a max_tokens that does not fit the context (on by default); off: answer 400 like llama.cpp": "缩短放不进上下文的 max_tokens（默认开启）；关闭后像 llama.cpp 一样返回 400",
+  "Anthropic requests that do not ask for thinking: think as the model does (model) or not (on_request)": "Anthropic 请求未要求思考时：按模型自身方式思考（model）或不思考（on_request）",
+  "Where a non-default reasoning effort goes: start (the default) or end (keeps the cache when it changes)": "非默认 reasoning effort 的位置：开头（默认）或结尾（变化时保留缓存）",
+  "Other model names the server lists and answers to (comma-separated)": "服务器列出并响应的其他模型名（逗号分隔）",
+  "Unload the model after this many seconds without requests (0 or empty: never)": "无请求多少秒后卸载模型（0 或留空：永不）",
+  "Start without loading the model; the first request loads it (text only)": "启动时不加载模型；第一个请求再加载（仅文本）",
+  "End a request when the engine says nothing for this long (default 300 s, 0 = wait)": "引擎多久没有输出就结束请求（默认 300 秒，0 = 一直等）",
+  "Keep the last 100 requests' prompts and answers in memory for /api-monitor": "在内存中保留最近 100 个请求的提示和回答，供 /api-monitor 使用",
+  "Open the chat page in the browser when the model is ready": "模型就绪后自动在浏览器打开聊天页",
+  "VRAM in MiB the engine leaves free for other programs (engine default 700)": "留给其他程序的显存 MiB（引擎默认 700）",
+  "No keys configured.": "还没有配置 API 密钥。",
+  "Copy": "复制",
+  "Remove": "删除",
   "Advanced JSON": "高级 JSON",
   "every key in strata-<model>.json": "strata-<model>.json 的全部键",
   "The API key shows as": "API 密钥显示为",
@@ -465,6 +510,7 @@ const ZH = {
   "Save JSON": "保存 JSON",
   "Agent plugins": "Agent 插件",
   "tools exposed to the model": "提供给模型的工具",
+  "Workspace": "工作区",
   "Only enabled plugins are offered to the model. Writes, deletes, shell, and MCP calls still ask for approval in the app.": "只会把启用的插件提供给模型。写文件、删除、Shell 和 MCP 调用仍会在 App 里请求审批。",
   "Web search": "Web 搜索",
   "used by the Web plugin": "由 Web 插件使用",
@@ -491,13 +537,32 @@ const ZH = {
   "Allow all auto-approves writes, deletes, shell, and MCP calls. Use it only on a trusted machine.": "全部放行会自动批准写文件、删除、Shell 和 MCP 调用。只在可信电脑上使用。",
   "Raise max rounds when a task legitimately uses many tools; lower it to fail loops sooner. Default is 16.": "任务确实需要很多工具时提高轮数；想更早终止循环时降低。默认 16。",
   "Save limits": "保存限制",
+  "Sandbox": "沙盒",
+  "Shell execution": "Shell 执行",
+  "Label": "标签",
+  "Host folder": "宿主机目录",
+  "Browse…": "浏览…",
+  "No access scopes.": "还没有访问目录。",
+  "Mode": "模式",
+  "Off (host shell)": "关闭（本机 Shell）",
+  "Docker (recommended)": "Docker（推荐）",
+  "Image": "镜像",
+  "Memory MB": "内存 MB",
+  "CPUs": "CPU 核数",
+  "Allow network": "允许联网",
+  "Shell runs in a throwaway container without root or a writable system disk. The workspace is mounted at /workspace; access scopes are mounted at /scopes/<name>. Allow network lets the container reach your LAN and the internet; keep it off unless the task needs it. Requires Docker Desktop + WSL2 (Windows) or Docker Engine.": "Shell 在一次性容器中运行，不使用 root，也没有可写的系统盘。工作目录挂载到 /workspace；访问目录挂载到 /scopes/<name>。允许联网会让容器访问局域网和互联网；除非任务需要，否则保持关闭。需要 Docker Desktop + WSL2（Windows）或 Docker Engine。",
+  "Save sandbox": "保存沙盒",
   "Access permissions": "访问权限",
   "sandbox scopes": "沙盒目录",
-  "Only these folders are mounted into the sandbox. Outside them, read and write are both impossible.": "沙盒只会挂载这些目录。目录外的文件既不能读也不能写。",
+  "These are host folders (Windows paths or NAS shares), not paths inside the sandbox. The model accesses them by host path; the Docker shell sees them at /scopes/<name>.": "这些是宿主机目录（Windows 路径或 NAS 共享），不是沙盒内部路径。模型通过宿主机路径访问，Docker Shell 中对应 /scopes/<name>。",
+  "allows writes. File tools enforce the same modes. Keep scopes outside the workspace; the workspace itself is read-write.": "允许写入。文件工具执行相同权限。scope 请放在工作区外，工作区本身可读写。",
+  "These are host folders (Windows paths or NAS shares), not paths inside the sandbox. The model accesses them by host path; the Docker shell sees them at /scopes/<name>. ro is read-only; rw allows writes. File tools enforce the same modes. Keep scopes outside the workspace; the workspace itself is read-write.": "这些是宿主机目录（Windows 路径或 NAS 共享），不是沙盒内部路径。模型通过宿主机路径访问；Docker Shell 中对应 /scopes/<name>。ro 只读，rw 可写；文件工具执行相同权限。scope 请放在工作区外，工作区本身可读写。",
+  "Keep scopes outside the workspace; the workspace itself is read-write.": "请把 scope 放在工作区外；工作区本身始终可读写。",
+  "allows writes. File tools enforce the same modes. Keep scopes outside the workspace; the workspace itself is read-write. Outside the workspace and these scopes, read and write are impossible.": "允许写入。文件工具执行相同权限。请把 scope 放在工作区外；工作区本身始终可读写。工作区和这些目录之外，读写都不可能。",
   "ro": "只读",
   "is read-only;": "表示只读；",
   "rw": "读写",
-  "allows writes. These permissions are stored now; the Docker sandbox runner is the next step.": "允许写入。权限现在先保存；Docker 沙盒执行器是下一步。",
+  "allows writes. The current Docker shell mounts only the workspace; scope mounts are the next step.": "允许写入。当前 Docker Shell 只挂载工作目录；目录挂载是下一步。",
   "Add folder": "添加目录",
   "Save access": "保存访问权限",
   "Choose a folder": "选择目录",
@@ -557,6 +622,11 @@ function zhPattern(text) {
   if ((match = /^Agent on port (\d+)$/.exec(text))) return `Agent · 端口 ${match[1]}`;
   if ((match = /^port (.+)$/.exec(text))) return `端口 ${match[1]}`;
   if ((match = /^context (.+)$/.exec(text))) return `上下文 ${match[1]}`;
+  if ((match = /^Docker: (.+)$/.exec(text))) return `Docker：${match[1]}`;
+  if ((match = /^Workspace: (.+)$/.exec(text))) return `工作区：${match[1]}`;
+  if ((match = /^on \(--spec (.+), min p (.+)\)$/.exec(text))) {
+    return `开启（--spec ${match[1]}，最小概率 ${match[2]}）`;
+  }
   if (text === "images on") return "图片开启";
   if (text === "images off") return "图片关闭";
   if (text === "model running") return "模型运行中";
@@ -611,7 +681,7 @@ function applyLanguage() {
   const select = $("lang");
   if (select) select.value = LANG;
   document.documentElement.lang = LANG === "zh" ? "zh-CN" : "en";
-  document.title = LANG === "zh" ? "Strata 设置" : "Strata Settings";
+  document.title = LANG === "zh" ? "Lumen 设置" : "Lumen Settings";
   if (LANG === "zh") {
     translateDom();
     if (!window.__wsanLangObserver) {
@@ -1010,7 +1080,7 @@ async function loadModelConfig() {
       ? `on (--spec ${c.engine.spec ?? "?"}, min p ${c.engine.spec_min_p ?? "?"})` : "off";
     $("c-spec").value = c.engine.spec ?? "";
     $("c-specp").value = c.engine.spec_min_p ?? "";
-    $("c-context").value = c.engine.context ?? "";
+    $("c-context").value = c.engine.context ? Math.round(c.engine.context / 1024) : "";
     $("c-kv").value = c.engine.kv || "int8";
     $("c-gpu").value = c.engine.gpu ?? "";
     $("c-form").innerHTML = (c.editable.keys || []).map((k, i) =>
@@ -1072,6 +1142,16 @@ function renderPlugins(data) {
   $("p-fake-nets").value = (web.fake_ip_networks || []).join("\n");
   $("p-rounds").value = (data.agent && data.agent.max_tool_rounds) || 16;
   $("p-approval").value = (data.agent && data.agent.approval_mode) || "ask";
+  const sandbox = data.sandbox || {};
+  $("p-sandbox-mode").value = sandbox.mode || "off";
+  $("p-sandbox-image").value = sandbox.image || "debian:bookworm-slim";
+  $("p-sandbox-memory").value = sandbox.memory_mb || 2048;
+  $("p-sandbox-cpus").value = sandbox.cpus || 2;
+  $("p-sandbox-network").checked = !!sandbox.network;
+  const workspace = Array.isArray(data.workspace) ? data.workspace.join(", ") : (data.workspace || "");
+  $("p-sandbox-workspace").textContent = workspace
+    ? `${LANG === "zh" ? "工作区" : "Workspace"}${LANG === "zh" ? "：" : ": "}${workspace}`
+    : "";
   $("p-status").textContent = web.api_key_set ? "A search API key is saved; leave blank to keep it." : "No search API key saved.";
 }
 
@@ -1100,8 +1180,15 @@ async function savePlugins() {
     max_tool_rounds: +$("p-rounds").value,
     approval_mode: $("p-approval").value
   };
+  const sandbox = {
+    mode: $("p-sandbox-mode").value,
+    image: $("p-sandbox-image").value.trim(),
+    memory_mb: +$("p-sandbox-memory").value,
+    cpus: +$("p-sandbox-cpus").value,
+    network: $("p-sandbox-network").checked
+  };
   try {
-    renderPlugins(await api("/api/plugins", {method: "POST", body: JSON.stringify({disabled, web, agent})}));
+    renderPlugins(await api("/api/plugins", {method: "POST", body: JSON.stringify({disabled, web, agent, sandbox})}));
     toast("Plugins saved.");
   } catch (e) { toast(e.message, true); }
 }
@@ -1113,16 +1200,19 @@ function renderScopes(scopes) {
       <label class="field"><span>Host folder</span>
         <span style="display:flex;gap:6px;align-items:center">
           <input data-field="source" value="${esc(scope.source || "")}" style="min-width:0;flex:1">
-          <button class="btn" type="button" data-scope-browse="${index}">Browse</button>
+          <button class="btn" type="button" data-scope-browse="${index}">Browse…</button>
         </span>
       </label>
-      <label class="field"><span>Mode</span><select data-field="mode">
-        <option value="ro"${scope.mode === "ro" ? " selected" : ""}>Read-only（只读）</option>
-        <option value="rw"${scope.mode === "rw" ? " selected" : ""}>Read-write（读写）</option>
-      </select></label>
-      <label class="small"><input type="checkbox" data-field="shell"${scope.shell !== false ? " checked" : ""}> Shell</label>
-      <label class="small"><input type="checkbox" data-field="search"${scope.search !== false ? " checked" : ""}> Search</label>
-      <button class="btn" data-scope-remove="${index}">Remove</button>
+      <button class="btn danger scope-remove" data-scope-remove="${index}">删除</button>
+      <div class="scope-options">
+        <label class="field"><span>Mode</span><select data-field="mode">
+          <option value="ro"${scope.mode === "ro" ? " selected" : ""}>Read-only（只读）</option>
+          <option value="rw"${scope.mode === "rw" ? " selected" : ""}>Read-write（读写）</option>
+        </select></label>
+        <label class="small"><input type="checkbox" data-field="shell"${scope.shell !== false ? " checked" : ""}> Shell</label>
+        <label class="small"><input type="checkbox" data-field="search"${scope.search !== false ? " checked" : ""}> Search</label>
+        <span class="small muted">模型访问：${esc(scope.container || "/scopes/<label>")} · 这是宿主机目录</span>
+      </div>
     </div>`).join("") || '<p class="muted">No access scopes.</p>';
 }
 
@@ -1187,11 +1277,32 @@ async function loadFolder(path) {
 }
 
 async function openFolderPicker(index) {
-  folderIndex = index;
-  $("folder-modal").hidden = false;
   const row = document.querySelectorAll("[data-scope-row]")[index];
-  const current = row?.querySelector('[data-field="source"]')?.value.trim() || "";
-  await loadFolder(current);
+  if (!row) return;
+  const input = row.querySelector('[data-field="source"]');
+  const label = row.querySelector('[data-field="label"]');
+  const button = row.querySelector("[data-scope-browse]");
+  const current = input?.value.trim() || "";
+  if (button) {
+    button.disabled = true;
+    button.textContent = LANG === "zh" ? "选择中…" : "Choosing…";
+  }
+  try {
+    const data = await api("/api/pick-folder?initial=" + encodeURIComponent(current));
+    if (data.path && input) {
+      input.value = data.path;
+      if (label && !label.value.trim()) {
+        label.value = data.path.replace(/[\\/]+$/, "").split(/[\\/]/).pop() || "Folder";
+      }
+    }
+  } catch (e) {
+    toast(e.message, true);
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = LANG === "zh" ? "浏览…" : "Browse…";
+    }
+  }
 }
 
 function closeFolderPicker() {
@@ -1372,7 +1483,7 @@ $("c-engine-save").addEventListener("click", async () => {
     mtp: $("c-mtp").value === "on",
     spec: $("c-spec").value === "" ? null : +$("c-spec").value,
     spec_min_p: $("c-specp").value === "" ? null : +$("c-specp").value,
-    context: $("c-context").value === "" ? null : +$("c-context").value,
+        context: $("c-context").value === "" ? null : Math.round(+$("c-context").value * 1024),
     kv: $("c-kv").value,
     gpu: $("c-gpu").value === "" ? null : +$("c-gpu").value
   }};
@@ -1439,6 +1550,7 @@ async function refreshLogs() {
 $("p-save").addEventListener("click", savePlugins);
 $("p-fetch-save").addEventListener("click", savePlugins);
 $("p-limits-save").addEventListener("click", savePlugins);
+$("p-sandbox-save").addEventListener("click", savePlugins);
 $("scope-save").addEventListener("click", saveAccess);
 $("scope-add").addEventListener("click", () => {
   renderScopes([...readScopes(), {label: "", source: "", mode: "ro", shell: true, search: true}]);
