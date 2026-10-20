@@ -506,7 +506,7 @@ class App:
 Add-Type -AssemblyName System.Windows.Forms
 [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false)
 $owner = New-Object System.Windows.Forms.Form
-$owner.Text = 'Lumen'
+$owner.Text = 'Lum'
 $owner.ShowInTaskbar = $false
 $owner.TopMost = $true
 $owner.WindowState = 'Minimized'

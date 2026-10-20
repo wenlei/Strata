@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Lumen Settings</title>
+<title>Lum Settings</title>
 <style>
 :root{
   --bg:#f5f3ef; --card:#fffdf9; --ink:#1d1c19; --muted:#6c6860; --line:#e4ded4;
@@ -115,7 +115,7 @@ input:focus,select:focus,textarea:focus{outline:2px solid color-mix(in srgb,var(
 </head>
 <body>
 <header>
-  <div class="brand">Lumen <span>Settings</span></div>
+  <div class="brand">Lum <span>Settings</span></div>
   <div class="pill" id="status-pill">checking...</div>
   <div class="spacer"></div>
   <a class="btn" id="chat-link" href="http://127.0.0.1:8080/" target="_blank" rel="noopener">Open chat</a>
@@ -414,7 +414,7 @@ if (urlLang === "en" || urlLang === "zh") localStorage.setItem(LANG_KEY, urlLang
 let LANG = localStorage.getItem(LANG_KEY) || "en";
 let translating = false;
 const ZH = {
-  "Lumen Settings": "Lumen 设置",
+  "Lum Settings": "Lum 设置",
   "Settings": "设置",
   "Language": "语言",
   "Open chat": "打开聊天",
@@ -681,7 +681,7 @@ function applyLanguage() {
   const select = $("lang");
   if (select) select.value = LANG;
   document.documentElement.lang = LANG === "zh" ? "zh-CN" : "en";
-  document.title = LANG === "zh" ? "Lumen 设置" : "Lumen Settings";
+  document.title = LANG === "zh" ? "Lum 设置" : "Lum Settings";
   if (LANG === "zh") {
     translateDom();
     if (!window.__wsanLangObserver) {
