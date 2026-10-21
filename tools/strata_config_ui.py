@@ -451,9 +451,12 @@ class App:
             data = {}
         if not isinstance(data, dict):
             data = {}
+        raw_web = data.get("web") if isinstance(data.get("web"), dict) else {}
+        web = {key: value for key, value in raw_web.items() if key != "api_key"}
+        web["api_key_set"] = bool(str(raw_web.get("api_key") or "").strip())
         return {
             "plugins": [],
-            "web": data.get("web") if isinstance(data.get("web"), dict) else {},
+            "web": web,
             "agent": data.get("agent") if isinstance(data.get("agent"), dict) else {},
             "sandbox": data.get("sandbox") if isinstance(data.get("sandbox"), dict) else {},
             "scopes": data.get("scopes") if isinstance(data.get("scopes"), list) else [],
