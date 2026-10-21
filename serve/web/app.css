@@ -26,6 +26,8 @@ main { flex: 1; min-height: 0; display: flex; }
 .st-msg--assistant .st-bubble { width: 100%; }
 .st-msg--user .st-bubble { white-space: pre-wrap; overflow-wrap: anywhere; }
 .st-bubble > :first-child { margin-top: 0; }
+.st-bubble img.st-bubble__img { display: block; max-width: 100%; max-height: 420px; height: auto; margin: var(--st-s-2) 0;
+                               border-radius: var(--st-r-md); border: 1px solid var(--st-line); }
 .st-bubble > :last-child { margin-bottom: 0; }
 .st-bubble p, .st-bubble ul, .st-bubble ol { margin: 0 0 var(--st-s-3); }
 .st-bubble ul, .st-bubble ol { padding-left: var(--st-s-6); }

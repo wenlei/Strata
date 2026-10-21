@@ -498,6 +498,8 @@ function inline(s) {
   const codes = [];
   s = s.replace(/`([^`\n]+)`/g, (_, c) => { codes.push(c); return `\u0000${codes.length - 1}\u0000`; });
   s = esc(s)
+    .replace(/!\[([^\]\n]*)\]\((https?:\/\/[^)\s]+|data:image\/(?:png|jpe?g|gif|webp);base64,[^)\s]+)\)/g,
+             '<img class="st-bubble__img" src="$2" alt="$1" loading="lazy">')
     .replace(/\*\*([^*\n]+)\*\*/g, "<strong>$1</strong>")
     .replace(/(^|[^*\w])\*([^*\n]+)\*(?![*\w])/g, "$1<em>$2</em>")
     .replace(/\[([^\]\n]+)\]\((https?:\/\/[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
