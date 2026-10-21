@@ -433,6 +433,66 @@ class App:
             raise ValueError(f"clear failed (HTTP {status})")
         return body if isinstance(body, dict) else {"cleared": 0}
 
+    def _agent_data_dir(self) -> Path:
+        explicit = os.environ.get("STRATA_AGENT_DATA_DIR", "").strip()
+        if explicit:
+            return Path(explicit).expanduser()
+        if os.name == "nt":
+            base = os.environ.get("LOCALAPPDATA") or str(Path.home() / "AppData" / "Local")
+            return Path(base) / "lite-strata-agent"
+        base = os.environ.get("XDG_DATA_HOME") or str(Path.home() / ".local" / "share")
+        return Path(base) / "lite-strata-agent"
+
+    def _local_plugins(self) -> dict:
+        path = self._agent_data_dir() / "plugins.json"
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            data = {}
+        if not isinstance(data, dict):
+            data = {}
+        return {
+            "plugins": [],
+            "web": data.get("web") if isinstance(data.get("web"), dict) else {},
+            "agent": data.get("agent") if isinstance(data.get("agent"), dict) else {},
+            "sandbox": data.get("sandbox") if isinstance(data.get("sandbox"), dict) else {},
+            "scopes": data.get("scopes") if isinstance(data.get("scopes"), list) else [],
+            "port": None,
+        }
+
+    def _save_local_plugins(self, body: dict) -> dict:
+        path = self._agent_data_dir() / "plugins.json"
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            data = {}
+        if not isinstance(data, dict):
+            data = {}
+        if isinstance(body.get("disabled"), list):
+            data["disabled"] = [str(item) for item in body["disabled"]]
+        web = body.get("web")
+        if isinstance(web, dict):
+            merged = dict(data.get("web") or {})
+            for key in ("provider", "url", "allow_fake_ip", "fake_ip_networks"):
+                if key in web:
+                    merged[key] = web[key]
+            if web.get("clear_api_key"):
+                merged["api_key"] = ""
+            elif isinstance(web.get("api_key"), str) and web["api_key"].strip():
+                merged["api_key"] = web["api_key"].strip()
+            data["web"] = merged
+        for key in ("agent", "sandbox"):
+            value = body.get(key)
+            if isinstance(value, dict):
+                data[key] = value
+        if isinstance(body.get("scopes"), list):
+            data["scopes"] = body["scopes"]
+        path.parent.mkdir(parents=True, exist_ok=True)
+        temp = path.with_suffix(path.suffix + ".tmp")
+        temp.write_text(json.dumps(data, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
+        temp.replace(path)
+        return self._local_plugins()
+
     def _agent_target(self) -> tuple[int, str]:
         port, key = self._running_target()
         if port is None:
@@ -442,25 +502,35 @@ class App:
         return port, key
 
     def plugins(self) -> dict:
-        port, key = self._agent_target()
-        status, body = mcp.http_json(
-            f"http://127.0.0.1:{port}/v1/agent/plugins", api_key=key, timeout=5
-        )
-        if status != 200 or not isinstance(body, dict):
-            raise ValueError(f"cannot read agent plugins from port {port} (HTTP {status})")
-        body["port"] = port
-        return body
+        try:
+            port, key = self._agent_target()
+            status, body = mcp.http_json(
+                f"http://127.0.0.1:{port}/v1/agent/plugins", api_key=key, timeout=5
+            )
+            if status != 200 or not isinstance(body, dict):
+                raise ValueError(f"cannot read agent plugins from port {port} (HTTP {status})")
+            body["port"] = port
+            return body
+        except ValueError as error:
+            if "no running model" not in str(error):
+                raise
+            return self._local_plugins()
 
     def save_plugins(self, body: dict) -> dict:
-        port, key = self._agent_target()
-        status, result = mcp.http_json(
-            f"http://127.0.0.1:{port}/v1/agent/plugins",
-            method="POST", body=body, api_key=key, timeout=10,
-        )
-        if status != 200 or not isinstance(result, dict):
-            raise ValueError(f"cannot save agent plugins (HTTP {status})")
-        result["port"] = port
-        return result
+        try:
+            port, key = self._agent_target()
+            status, result = mcp.http_json(
+                f"http://127.0.0.1:{port}/v1/agent/plugins",
+                method="POST", body=body, api_key=key, timeout=10,
+            )
+            if status != 200 or not isinstance(result, dict):
+                raise ValueError(f"cannot save agent plugins (HTTP {status})")
+            result["port"] = port
+            return result
+        except ValueError as error:
+            if "no running model" not in str(error):
+                raise
+            return self._save_local_plugins(body)
 
     def agent_sessions(self) -> dict:
         port, key = self._agent_target()
