@@ -198,3 +198,12 @@ main { flex: 1; min-height: 0; display: flex; }
 .img-results figure{margin:0}
 .img-results img{max-width:100%;border-radius:var(--st-r-lg);display:block}
 .img-results figcaption{font-size:var(--st-fs-sm, 13px);color:var(--st-ink-2, inherit);margin-top:4px}
+
+.attach-thumb-wrap { position: relative; display: inline-flex; width: 60px; height: 60px; flex: none; }
+.attach-thumb { width: 60px; height: 60px; object-fit: cover; border-radius: var(--st-r-md); border: 1px solid var(--st-line);
+                cursor: zoom-in; display: block; }
+.attach-thumb__remove { position: absolute; top: -7px; right: -7px; width: 22px; height: 22px; min-width: 22px;
+                        padding: 0; border-radius: 50%; background: var(--st-surface); border: 1px solid var(--st-line); }
+.st-lightbox { position: fixed; inset: 0; z-index: 100; background: rgba(0,0,0,.88); display: flex; align-items: center;
+               justify-content: center; padding: 24px; cursor: zoom-out; }
+.st-lightbox img { max-width: 100%; max-height: 100%; object-fit: contain; border-radius: var(--st-r-md); }

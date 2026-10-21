@@ -958,9 +958,25 @@ function renderAttachments() {
   box.hidden = !attachments.length;
   box.innerHTML = "";
   attachments.forEach((a, i) => {
+    if (a.kind === "image" && a.url) {
+      const wrap = document.createElement("span");
+      wrap.className = "attach-thumb-wrap";
+      const img = document.createElement("img");
+      img.className = "attach-thumb";
+      img.src = a.url;
+      img.alt = a.name || "image";
+      img.title = a.name || "image";
+      const x = document.createElement("button");
+      x.type = "button"; x.className = "st-btn st-btn--icon attach-thumb__remove"; x.setAttribute("aria-label", "Remove");
+      x.innerHTML = icon("trash");
+      x.onclick = (e) => { e.stopPropagation(); attachments.splice(i, 1); renderAttachments(); };
+      wrap.append(img, x);
+      box.appendChild(wrap);
+      return;
+    }
     const c = document.createElement("span");
     c.className = "chip";
-    c.innerHTML = icon(a.kind === "file" ? "attach" : "image", "st-icon st-icon--sm");
+    c.innerHTML = icon("attach", "st-icon st-icon--sm");
     c.append(a.name);
     const x = document.createElement("button");
     x.type = "button"; x.className = "st-btn st-btn--icon"; x.setAttribute("aria-label", "Remove");
@@ -1088,6 +1104,27 @@ $("sampling-btn").onclick = () => openDrawer(true);
 $("drawer-close").onclick = () => openDrawer(false);
 $("scrim").onclick = () => openDrawer(false);
 document.addEventListener("keydown", (e) => { if (e.key === "Escape" && $("drawer").dataset.open === "true") openDrawer(false); });
+
+// A picture (composer thumbnail, a user image, or Markdown output) opens full-screen; click or Escape closes it.
+function showLightbox(src) {
+  const box = document.createElement("div");
+  box.className = "st-lightbox";
+  const img = document.createElement("img");
+  img.src = src;
+  img.alt = "";
+  const close = () => { box.remove(); document.removeEventListener("keydown", onKey); };
+  const onKey = (e) => { if (e.key === "Escape") close(); };
+  box.onclick = close;
+  document.addEventListener("keydown", onKey);
+  box.appendChild(img);
+  document.body.appendChild(box);
+}
+document.addEventListener("click", (e) => {
+  const pic = e.target.closest(".attach-thumb, .msg-images img, .st-bubble__img");
+  if (!pic || !pic.src) return;
+  e.preventDefault();
+  showLightbox(pic.src);
+});
 
 // ------------------------------------------------------------------ start
 setBusy(false);
