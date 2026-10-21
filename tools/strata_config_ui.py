@@ -20,6 +20,7 @@ import subprocess
 import sys
 import threading
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
 import webbrowser
@@ -561,6 +562,40 @@ class App:
         body["port"] = port
         return body
 
+    def delete_agent_session(self, session_id: str) -> dict:
+        session_id = str(session_id or "").strip()
+        if not session_id:
+            raise ValueError("id is required")
+        port, key = self._agent_target()
+        encoded = urllib.parse.quote(session_id, safe="")
+        status, body = mcp.http_json(
+            f"http://127.0.0.1:{port}/v1/agent/sessions/{encoded}",
+            method="DELETE", api_key=key, timeout=10,
+        )
+        if status not in (200, 404):
+            raise ValueError(f"cannot delete that agent session (HTTP {status})")
+        return {"deleted": session_id}
+
+    def agent_attachment(self, path: str) -> tuple[str, bytes]:
+        value = str(path or "").strip()
+        if not value:
+            raise ValueError("path is required")
+        port, key = self._agent_target()
+        url = (f"http://127.0.0.1:{port}/v1/agent/attachments?path="
+               + urllib.parse.quote(value, safe=""))
+        request = urllib.request.Request(url, headers={"Authorization": f"Bearer {key}"})
+        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+        try:
+            with opener.open(request, timeout=20) as response:
+                data = response.read(32 * 1024 * 1024 + 1)
+                if len(data) > 32 * 1024 * 1024:
+                    raise ValueError("attachment is larger than 32 MB")
+                return response.headers.get_content_type(), data
+        except urllib.error.HTTPError as error:
+            raise ValueError(f"cannot read attachment (HTTP {error.code})") from None
+        except (OSError, ValueError) as error:
+            raise ValueError(f"cannot read attachment: {error}") from None
+
     def pick_folder(self, initial: str = "") -> dict:
         """Open the host's native folder picker (Windows). The page runs locally, so this is the same dialog Explorer uses."""
         if os.name != "nt":
@@ -813,6 +848,10 @@ class Handler(BaseHTTPRequestHandler):
             return
         query = urllib.parse.parse_qs(u.query)
         try:
+            if path == "/api/agent/attachment":
+                ctype, data = self._app().agent_attachment(query.get("path", [""])[0])
+                self._send(200, data, ctype)
+                return
             if path == "/api/state":
                 self._json(200, self._app().state(fresh=query.get("fresh", ["0"])[0] == "1"))
             elif path == "/api/models":
@@ -885,6 +924,8 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(200, self._app().clear_tasks())
             elif path == "/api/plugins":
                 self._json(200, self._app().save_plugins(body))
+            elif path == "/api/agent/session/delete":
+                self._json(200, self._app().delete_agent_session(body.get("id", "")))
             elif path == "/api/sessions/save":
                 self._json(200, self._app().save_session(body))
             elif path == "/api/sessions/delete":

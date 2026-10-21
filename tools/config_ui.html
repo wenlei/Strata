@@ -75,10 +75,12 @@ input:focus,select:focus,textarea:focus{outline:2px solid color-mix(in srgb,var(
 .plugin-row:last-child{border-bottom:0}
 .plugin-row input[type=checkbox]{margin-top:3px}
 .plugin-row .plugin-tools{margin-top:3px;color:var(--muted);font-size:12px}
-.chat-row{display:block;width:100%;text-align:left;border:1px solid var(--line);background:var(--card);
-  border-radius:10px;padding:10px 12px;margin:0 0 8px;cursor:pointer;font:inherit;color:var(--ink)}
+.chat-row{display:flex;align-items:center;gap:8px;width:100%;border:1px solid var(--line);background:var(--card);
+  border-radius:10px;padding:8px 10px;margin:0 0 8px;font:inherit;color:var(--ink)}
 .chat-row:hover{background:var(--pill)}
+.chat-open{flex:1;min-width:0;text-align:left;border:0;background:transparent;color:inherit;font:inherit;cursor:pointer;padding:2px}
 .chat-row .small{display:block;margin-top:2px}
+.chat-image{display:block;max-width:100%;max-height:420px;border-radius:10px;margin:8px 0;cursor:zoom-in}
 .chat-msg{padding:10px 12px;border-radius:10px;background:var(--pill);margin:0 0 8px;white-space:pre-wrap}
 .scope-row{display:grid;grid-template-columns:minmax(150px,.8fr) minmax(320px,2fr) auto;gap:10px 12px;
   align-items:end;border:1px solid var(--line);border-radius:12px;padding:12px;margin:0 0 10px;
@@ -1327,13 +1329,67 @@ async function loadChats() {
     const sessions = data.sessions || [];
     $("ch-summary").textContent = `${sessions.length} conversations on port ${data.port}`;
     $("chat-list").innerHTML = sessions.length ? sessions.map((s) => `
-      <button class="chat-row" data-chat="${esc(s.id)}">
-        <b>${esc(s.title || "Untitled")}</b>
-        <span class="small muted">${esc(s.updated_at || "")}</span>
-      </button>`).join("") : '<p class="muted">No conversations.</p>';
+      <div class="chat-row">
+        <button class="chat-open" data-chat="${esc(s.id)}">
+          <b>${esc(s.title || "Untitled")}</b>
+          <span class="small muted">${esc(s.updated_at || "")}</span>
+        </button>
+        <button class="btn danger" data-chat-delete="${esc(s.id)}">Delete</button>
+      </div>`).join("") : '<p class="muted">No conversations.</p>';
   } catch (e) {
     $("ch-summary").textContent = "";
     $("chat-list").innerHTML = `<p class="muted">${esc(e.message)}</p>`;
+  }
+}
+
+function parseChatContent(content) {
+  const images = [];
+  const kept = [];
+  for (const line of String(content || "").split("\n")) {
+    const text = line.trim();
+    if (text.startsWith('[[lum-attachment:') && text.endsWith(']]')) {
+      try {
+        const item = JSON.parse(text.slice('[[lum-attachment:'.length, -2));
+        if (String(item.mime || "").startsWith("image/") && item.path) {
+          images.push({alt: item.name || "image", path: item.path});
+        } else if (item.name) {
+          kept.push(`[file] ${item.name}`);
+        }
+      } catch (e) { kept.push(line); }
+      continue;
+    }
+    kept.push(line);
+  }
+  let visible = kept.join("\n");
+  visible = visible.replace(/!\[([^\]]*)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g, (_, alt, src) => {
+    if (/^(https?:|data:image\/)/i.test(src)) images.push({alt, src});
+    else images.push({alt, path: src.replace(/^file:\/\//, "")});
+    return "";
+  }).trim();
+  return {text: visible, images};
+}
+
+function chatImageHtml(image) {
+  if (image.src) {
+    return `<img class="chat-image" src="${esc(image.src)}" alt="${esc(image.alt || "image")}">`;
+  }
+  return `<img class="chat-image" data-chat-image="${esc(image.path)}" alt="${esc(image.alt || "image")}">`;
+}
+
+async function loadChatImages() {
+  for (const img of document.querySelectorAll("img[data-chat-image]")) {
+    try {
+      const path = img.dataset.chatImage;
+      const r = await fetch("/api/agent/attachment?path=" + encodeURIComponent(path), {
+        headers: {"X-Strata-Token": TOKEN}
+      });
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      img.src = URL.createObjectURL(await r.blob());
+      img.onclick = () => window.open(img.src, "_blank", "noopener");
+    } catch (e) {
+      img.alt = "Image unavailable";
+      img.title = e.message;
+    }
   }
 }
 
@@ -1346,11 +1402,14 @@ async function openChat(id) {
     const messages = data.messages || [];
     $("chat-messages").innerHTML = messages.length ? messages.map((m) => {
       const version = m.versions ? ` · version ${m.versions.index}/${m.versions.count}` : "";
+      const parsed = parseChatContent(m.content);
       return `<div class="chat-msg${m.role === "user" ? " user" : ""}">
         <div class="small muted">${esc(m.role)}${esc(version)}</div>
-        <div>${esc(m.content)}</div>
+        <div>${esc(parsed.text)}</div>
+        ${parsed.images.map(chatImageHtml).join("")}
       </div>`;
     }).join("") : '<p class="muted">No messages.</p>';
+    loadChatImages();
     $("chat-detail-card").scrollIntoView({behavior: "smooth"});
   } catch (e) { toast(e.message, true); }
 }
@@ -1381,6 +1440,16 @@ document.querySelectorAll("nav button").forEach((b) => b.addEventListener("click
 }));
 
 document.addEventListener("click", async (e) => {
+  const delChat = e.target.closest && e.target.closest("[data-chat-delete]");
+  if (delChat) {
+    if (!confirm("Delete this conversation? Its messages, versions, and task records are removed; this cannot be undone.")) return;
+    try {
+      await api("/api/agent/session/delete", {method: "POST", body: JSON.stringify({id: delChat.dataset.chatDelete})});
+      await loadChats();
+      toast("Conversation deleted.");
+    } catch (err) { toast(err.message, true); }
+    return;
+  }
   const chat = e.target.closest && e.target.closest("[data-chat]");
   if (chat) {
     await openChat(chat.dataset.chat);
