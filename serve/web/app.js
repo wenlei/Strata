@@ -494,12 +494,33 @@ $("cfg-save").addEventListener("click", async () => {
 });
 
 // ------------------------------------------------------------------ Markdown (escaped first, then formatted)
+function localImageHtml(path, alt = "") {
+  return `<img class="st-bubble__img" data-local-image="${esc(path)}" alt="${esc(alt || "image")}" loading="lazy">`;
+}
+function bareImagePath(line) {
+  return /^(?:\/workspace\/|\/scopes\/[^/\s]+\/|[A-Za-z]:[\\/]|\.?\.?\/)?[^\s:<>"|?*]+\.(?:png|jpe?g|gif|webp|bmp)$/i.test(line);
+}
+async function hydrateLocalImages(root) {
+  for (const img of root.querySelectorAll("img[data-local-image]")) {
+    const path = img.dataset.localImage;
+    try {
+      const r = await fetch("v1/agent/attachments?path=" + encodeURIComponent(path), {headers: headers()});
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      img.src = URL.createObjectURL(await r.blob());
+      delete img.dataset.localImage;
+    } catch (e) {
+      img.alt = "Image unavailable";
+      img.title = e.message || "Image unavailable";
+    }
+  }
+}
 function inline(s) {
   const codes = [];
   s = s.replace(/`([^`\n]+)`/g, (_, c) => { codes.push(c); return `\u0000${codes.length - 1}\u0000`; });
   s = esc(s)
     .replace(/!\[([^\]\n]*)\]\((https?:\/\/[^)\s]+|data:image\/(?:png|jpe?g|gif|webp);base64,[^)\s]+)\)/g,
              '<img class="st-bubble__img" src="$2" alt="$1" loading="lazy">')
+    .replace(/!\[([^\]\n]*)\]\(([^)\s]+)\)/g, (_, alt, src) => localImageHtml(src, alt))
     .replace(/\*\*([^*\n]+)\*\*/g, "<strong>$1</strong>")
     .replace(/(^|[^*\w])\*([^*\n]+)\*(?![*\w])/g, "$1<em>$2</em>")
     .replace(/\[([^\]\n]+)\]\((https?:\/\/[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
@@ -522,6 +543,9 @@ function blocks(text) {
     if ((m = l.match(/^(#{1,6})\s+(.*)$/))) { flushPara(); flushList(); out.push(`<${m[1].length <= 2 ? "h3" : "h4"}>${inline(m[2])}</${m[1].length <= 2 ? "h3" : "h4"}>`); continue; }
     if (/^\s*([-*_])\s*\1\s*\1[\s\1]*$/.test(l)) { flushPara(); flushList(); out.push("<hr>"); continue; }
     if ((m = l.match(/^>\s?(.*)$/))) { flushPara(); flushList(); out.push(`<blockquote>${inline(m[1])}</blockquote>`); continue; }
+    if (bareImagePath(l.trim())) {
+      flushPara(); flushList(); out.push(localImageHtml(l.trim())); continue;
+    }
     if (/^\s*\|.*\|\s*$/.test(l) && i + 1 < lines.length && /^\s*\|?[\s:-]+\|[\s|:-]*$/.test(lines[i + 1])) {
       flushPara(); flushList();
       const cells = (row) => row.trim().replace(/^\||\|$/g, "").split("|").map((c) => inline(c.trim()));
@@ -698,6 +722,7 @@ function updateAssistant(el, m, streaming) {
   } else {
     bubble.innerHTML = answerHtml(m);
     if (streaming) bubble.classList.add("cursor"); else bubble.classList.remove("cursor");
+    hydrateLocalImages(bubble);
   }
   el.querySelector(".meta-text").textContent = m.meta || (streaming ? "" : m.stopped ? "Stopped" : "");
   el.querySelector("[data-msg-copy]").hidden = streaming || !m.text;
