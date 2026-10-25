@@ -5155,6 +5155,9 @@ class Service:
                 finally:
                     # #266: settle this request's status, history and totals while still holding the fifo: once
                     # it is released the next request sets its own status, which this must not record or clear
+                    done_msg = None
+                    length_hint = False
+                    debug_raw = None
                     with self.status_lock:
                         if st.get("busy") and not timed_out:
                             last = request_stats(segments)          # only this request's own DONEs count
@@ -5212,14 +5215,13 @@ class Service:
                             hit_msg = f", expert cache {hit_rate*100:.1f}% hit" if hit_rate is not None else ""
                             if hit_msg and pcie_share:
                                 hit_msg += f" (+{pcie_share*100:.1f}% of the routed experts over PCIe)"
-                            print(f"[strata] done: {n} tokens in {el:.0f} s ({rate:.1f} tok/s) "
-                                  f"({finish}, cancel={cancel.is_set()}){hit_msg}", flush=True)
-                            if finish == "length" and parser.state in ("reasoning", "rcall"):   # #530
-                                print("[strata] the reply reached max tokens while still thinking, so it has no "
-                                      "answer: a thinking budget (reasoning_budget_tokens, in the request or in "
-                                      "strata-<model>.json for every request) leaves room to answer", flush=True)
+                            done_msg = (
+                                f"[strata] done: {n} tokens in {el:.0f} s ({rate:.1f} tok/s) "
+                                f"({finish}, cancel={cancel.is_set()}){hit_msg}"
+                            )
+                            length_hint = finish == "length" and parser.state in ("reasoning", "rcall")
                             if os.environ.get("STRATA_DEBUG") and raw_ids:
-                                print(f"[strata] raw: {self.tok.decode(raw_ids)!r}", flush=True)
+                                debug_raw = list(raw_ids)
                         st["busy"] = False
                         st.pop("tail", None)                     # #212: the answer's end is not kept once it is done
                         st.pop("tool", None)
@@ -5231,6 +5233,14 @@ class Service:
                                 self.status.update(busy=False)
                                 self.status.pop("tail", None)
                                 self.status.pop("tool", None)
+                    if done_msg:
+                        print(done_msg, flush=True)
+                    if length_hint:                         # #530
+                        print("[strata] the reply reached max tokens while still thinking, so it has no "
+                              "answer: a thinking budget (reasoning_budget_tokens, in the request or in "
+                              "strata-<model>.json for every request) leaves room to answer", flush=True)
+                    if debug_raw:
+                        print(f"[strata] raw: {self.tok.decode(debug_raw)!r}", flush=True)
         except QueueCancelled:
             finish = "cancel"
             yield "done", {"finish": "cancel", "completion_tokens": 0, "reused": 0, "timings": None,

@@ -509,8 +509,7 @@ class App:
             flags = 0
             startup = None
             if os.name == "nt":
-                # Strata only prints its progress when it has a console; keep one, minimized,
-                # and capture stdout through a pipe so the page can stream it live.
+                # Strata only prints its progress when it has a console; keep one, minimized.
                 flags = subprocess.CREATE_NEW_CONSOLE
                 startup = subprocess.STARTUPINFO()
                 startup.dwFlags |= subprocess.STARTF_USESHOWWINDOW
@@ -518,17 +517,31 @@ class App:
             with self._console_lock:
                 self._console_lines = []
                 self._console_base = 0
+            # Never hand the child a pipe owned by this page: if the page is
+            # restarted, writes to a pipe with no reader block the server while
+            # it holds its status lock. The log file is safe.
+            self._console_log.parent.mkdir(parents=True, exist_ok=True)
+            log_path = self._console_log
+            try:
+                log_handle = log_path.open("ab", buffering=0)
+            except PermissionError:
+                # A previous server may still hold the old file open.
+                log_path = log_path.with_name(
+                    f"server-{time.strftime('%Y%m%d-%H%M%S')}.log"
+                )
+                log_handle = log_path.open("ab", buffering=0)
             env = dict(os.environ, PYTHONUNBUFFERED="1", PYTHONUTF8="1")
-            proc = subprocess.Popen(
-                ["cmd", "/c", str(bat)] if os.name == "nt" else ["/bin/sh", str(bat)],
-                cwd=str(ROOT), creationflags=flags, startupinfo=startup, env=env,
-                stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT, text=True, encoding="utf-8",
-                errors="replace", bufsize=1, close_fds=True,
-            )
+            try:
+                proc = subprocess.Popen(
+                    ["cmd", "/c", str(bat)] if os.name == "nt" else ["/bin/sh", str(bat)],
+                    cwd=str(ROOT), creationflags=flags, startupinfo=startup, env=env,
+                    stdin=subprocess.DEVNULL, stdout=log_handle,
+                    stderr=subprocess.STDOUT, close_fds=True,
+                )
+            finally:
+                log_handle.close()
             self._console_proc = proc
-            threading.Thread(target=self._pump_console, args=(proc,), daemon=True).start()
-            return {"summary": "starting; streaming into the console panel"}
+            return {"summary": f"starting; output goes to {log_path}"}
         raise mcp.ToolError("action must be start or stop")
 
     def _pump_console(self, proc: subprocess.Popen) -> None:
