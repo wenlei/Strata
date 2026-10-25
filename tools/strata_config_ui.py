@@ -683,6 +683,7 @@ class App:
             "agent": data.get("agent") if isinstance(data.get("agent"), dict) else {},
             "sandbox": data.get("sandbox") if isinstance(data.get("sandbox"), dict) else {},
             "host_commands": data.get("host_commands") if isinstance(data.get("host_commands"), list) else [],
+            "directory_refs": data.get("directory_refs") if isinstance(data.get("directory_refs"), dict) else {},
             "scopes": data.get("scopes") if isinstance(data.get("scopes"), list) else [],
             "port": None,
         }
@@ -716,6 +717,12 @@ class App:
             data["host_commands"] = [
                 str(item).strip() for item in body["host_commands"] if str(item).strip()
             ]
+        if isinstance(body.get("directory_refs"), dict):
+            data["directory_refs"] = {
+                str(name).strip(): str(path).strip()
+                for name, path in body["directory_refs"].items()
+                if str(name).strip() and str(path).strip()
+            }
         if isinstance(body.get("scopes"), list):
             data["scopes"] = body["scopes"]
         path.parent.mkdir(parents=True, exist_ok=True)

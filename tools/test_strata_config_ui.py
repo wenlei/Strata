@@ -50,6 +50,14 @@ class Folder(unittest.TestCase):
             self.app._save_local_plugins({"host_commands": ["echo hi", "  "]})
             self.assertEqual(self.app._local_plugins()["host_commands"], ["echo hi"])
 
+    def test_local_directory_refs_roundtrip(self):
+        data_dir = self.root / "agent-data"
+        with mock.patch.dict(os.environ, {"STRATA_AGENT_DATA_DIR": str(data_dir)}):
+            self.app._save_local_plugins({"directory_refs": {"FAMILY": r"C:\Temp"}})
+            self.assertEqual(
+                self.app._local_plugins()["directory_refs"], {"FAMILY": r"C:\Temp"}
+            )
+
     def test_lan_without_a_key_is_refused(self):
         with self.assertRaises(ValueError):
             self.app.save_config({"model": "iq3_s", "host": "0.0.0.0"})

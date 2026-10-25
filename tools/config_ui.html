@@ -232,25 +232,37 @@ pre{background:var(--td-bg-color-page);border-color:var(--td-border-level-1-colo
 .access-summary div{min-width:84px;padding:10px 12px;border:1px solid var(--td-border-level-1-color);border-radius:var(--td-radius-default);background:var(--td-bg-color-page);text-align:center}
 .access-summary b{display:block;font-size:22px;line-height:1.2;color:var(--td-brand-color)}
 .access-summary span{font-size:12px;color:var(--td-text-color-secondary)}
-.scope-list{display:flex;flex-direction:column;gap:12px;margin-bottom:16px}
-.scope-card{background:var(--td-bg-color-container);border:1px solid var(--td-border-level-1-color);border-radius:var(--td-radius-medium);padding:16px 18px}
-.scope-card__head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:14px}
-.scope-card__identity{display:flex;align-items:center;gap:12px;min-width:0;flex:1}
-.scope-mode-mark{display:inline-flex;align-items:center;justify-content:center;width:38px;height:38px;flex:0 0 auto;border-radius:10px;background:var(--td-bg-color-page);border:1px solid var(--td-border-level-1-color);color:var(--td-text-color-secondary);font-size:12px;font-weight:700;letter-spacing:.04em}
+.refs-card{margin-bottom:16px}
+.ref-list{border:1px solid var(--td-border-level-1-color);border-radius:var(--td-radius-default);overflow:hidden;margin:10px 0 12px}
+.ref-list>p{padding:12px 14px}
+.ref-head,.ref-row{display:grid;grid-template-columns:minmax(140px,.6fr) minmax(280px,2fr) auto;gap:12px;align-items:center}
+.ref-head{padding:7px 14px;background:var(--td-bg-color-page);border-bottom:1px solid var(--td-border-level-1-color);color:var(--td-text-color-secondary);font-size:12px;font-weight:600}
+.ref-row{padding:8px 14px;border-bottom:1px solid var(--td-border-level-1-color)}
+.ref-row:last-child{border-bottom:0}
+.ref-row input{height:30px;font-size:13px}
+.ref-remove{min-width:64px}
+.scope-list{background:var(--td-bg-color-container);border:1px solid var(--td-border-level-1-color);border-radius:var(--td-radius-medium);overflow:hidden;margin-bottom:16px}
+.scope-list>p{padding:16px}
+.scope-list-head,.scope-item{display:grid;grid-template-columns:36px minmax(140px,.8fr) minmax(280px,2fr) 112px 220px auto;gap:12px;align-items:center}
+.scope-list-head{padding:8px 14px;border-bottom:1px solid var(--td-border-level-1-color);background:var(--td-bg-color-page);color:var(--td-text-color-secondary);font-size:12px;font-weight:600}
+.scope-item{padding:9px 14px;border-bottom:1px solid var(--td-border-level-1-color)}
+.scope-item:last-child{border-bottom:0}
+.scope-item:hover{background:color-mix(in srgb,var(--td-bg-color-page) 55%,var(--td-bg-color-container))}
+.scope-mode-mark{display:inline-flex;align-items:center;justify-content:center;width:34px;height:34px;flex:0 0 auto;border-radius:9px;background:var(--td-bg-color-page);border:1px solid var(--td-border-level-1-color);color:var(--td-text-color-secondary);font-size:12px;font-weight:700;letter-spacing:.04em}
 .scope-mode-mark.is-rw{background:color-mix(in srgb,var(--td-brand-color) 10%,var(--td-bg-color-container));border-color:color-mix(in srgb,var(--td-brand-color) 28%,var(--td-border-level-1-color));color:var(--td-brand-color)}
-.scope-card__name{min-width:0;display:flex;flex-direction:column;gap:2px}
-.scope-card__name input{border:1px solid transparent;background:transparent;height:28px;padding:0 4px;font-weight:600;font-size:15px}
-.scope-card__name input:hover{border-color:var(--td-border-level-1-color)}
-.scope-card__name input:focus{background:var(--td-bg-color-container);border-color:var(--td-brand-color)}
-.scope-card__side{display:flex;align-items:center;gap:10px;flex:0 0 auto}
-.scope-card__grid{display:grid;grid-template-columns:minmax(0,2fr) minmax(160px,.7fr);gap:12px}
-.scope-card__grid .field{margin:0}
+.scope-item__name{min-width:0;display:flex;flex-direction:column;gap:2px}
+.scope-item__name input{border:1px solid transparent;background:transparent;height:26px;padding:0 4px;font-weight:600;font-size:14px}
+.scope-item__name input:hover{border-color:var(--td-border-level-1-color)}
+.scope-item__name input:focus{background:var(--td-bg-color-container);border-color:var(--td-brand-color)}
+.scope-item__name .muted{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.scope-item__source{min-width:0}
 .scope-source-row{display:flex;gap:8px;align-items:center;width:100%}
-.scope-source-row input{flex:1 1 auto;width:100%;min-width:0;cursor:pointer}
-.scope-card__grid{grid-template-columns:minmax(0,1fr) 180px}
-.scope-card__options{display:flex;align-items:center;gap:20px;flex-wrap:wrap;margin-top:10px;padding-top:12px;border-top:1px solid var(--td-border-level-1-color)}
+.scope-source-row input{flex:1 1 auto;width:100%;min-width:0;height:30px;font-size:13px}
+.scope-mode-select{width:100%;height:30px;font-size:13px}
+.scope-item__access{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
 .scope-toggle{display:inline-flex;align-items:center;gap:8px;font-size:13px;color:var(--td-text-color-primary);cursor:pointer}
 .scope-toggle input{width:16px;height:16px;accent-color:var(--td-brand-color)}
+.scope-remove{min-width:64px}
 .scope-empty{padding:28px;text-align:center}
 .scope-empty b{display:block;margin-bottom:6px}
 .scope-empty p{margin:0 0 12px}
@@ -271,11 +283,18 @@ pre{background:var(--td-bg-color-page);border-color:var(--td-border-level-1-colo
   .access-hero{display:block}
   .access-summary{margin-top:14px;display:grid;grid-template-columns:repeat(3,1fr)}
   .access-summary div{min-width:0}
-  .scope-card{padding:14px}
-  .scope-card__head{flex-direction:column}
-  .scope-card__side{width:100%;justify-content:space-between}
-  .scope-card__grid{grid-template-columns:1fr}
-  .scope-card__options{gap:12px}
+  .scope-list-head{display:none}
+  .scope-item{padding:12px 14px;grid-template-columns:36px minmax(0,1fr) auto;gap:8px 10px;
+    grid-template-areas:"badge name remove" "source source source" "mode mode mode" "access access access"}
+  .scope-item .scope-mode-mark{grid-area:badge}
+  .scope-item__name{grid-area:name}
+  .scope-item__source{grid-area:source}
+  .scope-mode-select{grid-area:mode;max-width:none}
+  .scope-item__access{grid-area:access;gap:16px}
+  .scope-remove{grid-area:remove;justify-self:end}
+  .ref-head{display:none}
+  .ref-row{grid-template-columns:1fr;gap:8px}
+  .ref-row .ref-remove{justify-self:start}
   .access-actions{display:block}
 }
 </style>
@@ -305,10 +324,8 @@ pre{background:var(--td-bg-color-page);border-color:var(--td-border-level-1-colo
 label.field .scope-source-row { display: grid; grid-template-columns: minmax(0, 1fr) 76px; gap: 8px; align-items: center; width: 100%; margin: 0; }
 .scope-source-row .btn,
 .scope-source-row .btn.t-button { width: 76px; min-width: 76px; padding: 0 12px; }
-.scope-card__side { gap: 8px; }
-.scope-card__side .btn,
-.scope-card__side .btn.t-button { min-width: 86px; }
-.scope-card__grid { gap: 16px; }
+.scope-item .scope-remove,
+.scope-item .scope-remove.t-button { min-width: 64px; }
 .access-actions .row { gap: 8px; }
 .card .row > .btn,
 .card .row > .btn.t-button { flex: 0 0 auto; }
@@ -497,6 +514,16 @@ label.field .scope-source-row { display: grid; grid-template-columns: minmax(0, 
         <p class="muted">These are host folders or NAS shares. The agent uses the host path; Docker Shell sees them under <code>/scopes/&lt;name&gt;</code>.</p>
       </div>
       <div class="access-summary" id="scope-summary"></div>
+    </div>
+    <div class="card refs-card">
+      <h2>Directory references <small>reusable folder paths</small></h2>
+      <p class="muted">Define a folder once, then use <code>${FAMILY}</code> in any host folder below, for example <code>${FAMILY}\2026</code>.</p>
+      <div class="ref-list" id="ref-list"><p class="muted">Checking...</p></div>
+      <div class="row">
+        <button class="btn" id="ref-add">Add reference</button>
+        <button class="btn" id="ref-save">Save references</button>
+        <span class="muted small" id="ref-msg"></span>
+      </div>
     </div>
     <div class="scope-list" id="scope-list"><p class="muted">Checking...</p></div>
     <div class="card access-actions">
@@ -876,6 +903,24 @@ const ZH = {
   "List launchable apps on the Lum phone. Requires approval.": "列出 Lum 手机上可启动的应用；需要审批。",
   "Search the Lum phone's contacts by name or number. Requires approval and the Android contacts permission.": "按姓名或号码搜索 Lum 手机通讯录；需要审批和 Android 通讯录权限。",
   "Access permissions": "访问权限",
+  "Directory references": "目录引用",
+  "reusable folder paths": "可复用目录路径",
+  "Define a folder once, then use": "先定义一个目录，然后使用",
+  "in any host folder below, for example": "可在下方任意宿主机目录中使用，例如",
+  "Add reference": "添加引用",
+  "Save references": "保存引用",
+  "Reference name": "引用名称",
+  "Folder path": "目录路径",
+  "No directory references yet.": "还没有目录引用。",
+  "Directory references saved.": "目录引用已保存。",
+  "Access permissions saved.": "访问权限已保存。",
+  "Name": "名称",
+  "Folder name": "目录名称",
+  "Click to choose a folder": "点击选择目录",
+  "No access folders yet": "还没有访问目录",
+  "Add a folder when the agent needs files outside the workspace.": "当 Agent 需要工作区外的文件时，添加一个目录。",
+  "Add your first folder": "添加第一个目录",
+  "Folder": "目录",
   "sandbox scopes": "沙盒目录",
   "These are host folders (Windows paths or NAS shares), not paths inside the sandbox. The model accesses them by host path; the Docker shell sees them at /scopes/<name>.": "这些是宿主机目录（Windows 路径或 NAS 共享），不是沙盒内部路径。模型通过宿主机路径访问，Docker Shell 中对应 /scopes/<name>。",
   "allows writes. File tools enforce the same modes. Keep scopes outside the workspace; the workspace itself is read-write.": "允许写入。文件工具执行相同权限。scope 请放在工作区外，工作区本身可读写。",
@@ -1994,46 +2039,91 @@ function renderScopes(scopes) {
     <div><b>${items.length}</b><span>folders</span></div>
     <div><b>${items.length - writable}</b><span>read-only</span></div>
     <div><b>${writable}</b><span>read-write</span></div>`;
-  $("scope-list").innerHTML = items.length ? items.map((scope, index) => `
-    <div class="scope-card" data-scope-row>
-      <div class="scope-card__head">
-        <div class="scope-card__identity">
-          <span class="scope-mode-mark ${scope.mode === "rw" ? "is-rw" : ""}">${scope.mode === "rw" ? "RW" : "RO"}</span>
-          <div class="scope-card__name">
-            <input data-field="label" value="${esc(scope.label || "")}" placeholder="Folder name" aria-label="Folder name">
-            <span class="muted small">${esc(scope.container || "/scopes/<name>")}</span>
-          </div>
-        </div>
-        <div class="scope-card__side">
-          <span class="tag ${scope.mode === "rw" ? "warn" : ""}">${scope.mode === "rw" ? "Read-write" : "Read-only"}</span>
-          <button class="btn danger" data-scope-remove="${index}">Remove</button>
-        </div>
+  $("scope-list").innerHTML = items.length ? `
+    <div class="scope-list-head">
+      <span></span>
+      <span>${esc(tr("Name"))}</span>
+      <span>${esc(tr("Host folder"))}</span>
+      <span>${esc(tr("Permission"))}</span>
+      <span>${esc(tr("Access"))}</span>
+      <span></span>
+    </div>` + items.map((scope, index) => `
+    <div class="scope-item" data-scope-row>
+      <span class="scope-mode-mark ${scope.mode === "rw" ? "is-rw" : ""}">${scope.mode === "rw" ? "RW" : "RO"}</span>
+      <div class="scope-item__name">
+        <input data-field="label" value="${esc(scope.label || "")}" placeholder="${esc(tr("Folder name"))}" aria-label="${esc(tr("Folder name"))}">
+        <span class="muted small">${esc(scope.container || "/scopes/<name>")}</span>
       </div>
-      <div class="scope-card__grid">
-        <label class="field"><span>Host folder</span>
-          <span class="scope-source-row">
-            <input data-field="source" data-scope-pick="${index}" value="${esc(scope.source || "")}" placeholder="Click to choose a folder" readonly title="Click to choose a folder">
-            <button class="btn" type="button" data-scope-browse="${index}">Browse</button>
-          </span>
-        </label>
-        <label class="field"><span>Permission</span><select data-field="mode">
-          <option value="ro"${scope.mode === "ro" ? " selected" : ""}>Read-only</option>
-          <option value="rw"${scope.mode === "rw" ? " selected" : ""}>Read-write</option>
-        </select></label>
+      <div class="scope-item__source">
+        <span class="scope-source-row">
+          <input data-field="source" value="${esc(scope.source || "")}" placeholder="${esc(tr("Host folder"))}">
+          <button class="btn" type="button" data-scope-browse="${index}">${esc(tr("Browse"))}</button>
+        </span>
       </div>
-      <div class="scope-card__options">
-        <label class="scope-toggle"><input type="checkbox" data-field="shell"${scope.shell !== false ? " checked" : ""}> <span>Shell access</span></label>
-        <label class="scope-toggle"><input type="checkbox" data-field="search"${scope.search !== false ? " checked" : ""}> <span>Search access</span></label>
-        <span class="muted small">File tools enforce this permission; writes still need approval.</span>
+      <select class="scope-mode-select" data-field="mode" aria-label="${esc(tr("Permission"))}">
+        <option value="ro"${scope.mode === "ro" ? " selected" : ""}>${esc(tr("Read-only"))}</option>
+        <option value="rw"${scope.mode === "rw" ? " selected" : ""}>${esc(tr("Read-write"))}</option>
+      </select>
+      <div class="scope-item__access">
+        <label class="scope-toggle"><input type="checkbox" data-field="shell"${scope.shell !== false ? " checked" : ""}> <span>${esc(tr("Shell access"))}</span></label>
+        <label class="scope-toggle"><input type="checkbox" data-field="search"${scope.search !== false ? " checked" : ""}> <span>${esc(tr("Search access"))}</span></label>
       </div>
+      <button class="btn danger scope-remove" data-scope-remove="${index}">${esc(tr("Remove"))}</button>
     </div>`).join("") : `
     <div class="card scope-empty">
-      <b>No access folders yet</b>
-      <p class="muted">Add a folder when the agent needs files outside the workspace.</p>
-      <button class="btn primary" id="scope-empty-add">Add your first folder</button>
+      <b>${esc(tr("No access folders yet"))}</b>
+      <p class="muted">${esc(tr("Add a folder when the agent needs files outside the workspace."))}</p>
+      <button class="btn primary" id="scope-empty-add">${esc(tr("Add your first folder"))}</button>
     </div>`;
   const emptyAdd = $("scope-empty-add");
   if (emptyAdd) emptyAdd.addEventListener("click", () => $("scope-add").click());
+}
+
+function refRow(name = "", path = "") {
+  return `
+    <div class="ref-row" data-ref-row>
+      <input data-ref-name value="${esc(name)}" placeholder="${esc(tr("Reference name"))}" aria-label="${esc(tr("Reference name"))}">
+      <input data-ref-path value="${esc(path)}" placeholder="${esc(tr("Folder path"))}" aria-label="${esc(tr("Folder path"))}">
+      <button class="btn danger ref-remove" type="button" data-ref-remove>${esc(tr("Remove"))}</button>
+    </div>`;
+}
+
+function renderRefs(refs) {
+  const entries = Object.entries(refs || {});
+  $("ref-list").innerHTML = entries.length ? `
+    <div class="ref-head">
+      <span>${esc(tr("Reference name"))}</span>
+      <span>${esc(tr("Folder path"))}</span>
+      <span></span>
+    </div>` + entries.map(([name, path]) => refRow(name, path)).join("") : `
+    <p class="muted">${esc(tr("No directory references yet."))}</p>`;
+}
+
+function addRefRow(name = "", path = "") {
+  const list = $("ref-list");
+  const empty = list.querySelector(":scope > p");
+  if (empty) list.innerHTML = "";
+  if (!list.querySelector(".ref-head")) {
+    list.insertAdjacentHTML("afterbegin", `
+      <div class="ref-head">
+        <span>${esc(tr("Reference name"))}</span>
+        <span>${esc(tr("Folder path"))}</span>
+        <span></span>
+      </div>`);
+  }
+  list.insertAdjacentHTML("beforeend", refRow(name, path));
+  const row = list.lastElementChild;
+  row?.querySelector("[data-ref-name]")?.focus();
+}
+
+function readRefs() {
+  const refs = {};
+  for (const row of document.querySelectorAll("[data-ref-row]")) {
+    const name = row.querySelector("[data-ref-name]").value.trim();
+    const path = row.querySelector("[data-ref-path]").value.trim();
+    if (name || path) refs[name] = path;
+  }
+  return refs;
 }
 
 function readScopesRaw() {
@@ -2057,6 +2147,7 @@ async function loadAccess() {
   $("scope-list").innerHTML = '<p class="muted">Checking...</p>';
   try {
     const data = await api("/api/plugins");
+    renderRefs(data.directory_refs || {});
     renderScopes(data.scopes || []);
     $("scope-msg").textContent = `${(data.scopes || []).length} scopes`;
     $("p-rounds").value = (data.agent && data.agent.max_tool_rounds) || 16;
@@ -2142,9 +2233,25 @@ function closeFolderPicker() {
   folderIndex = -1;
 }
 
+async function saveReferences() {
+  try {
+    const data = await api("/api/plugins", {
+      method: "POST",
+      body: JSON.stringify({directory_refs: readRefs()})
+    });
+    renderRefs(data.directory_refs || {});
+    $("ref-msg").textContent = "Saved.";
+    toast("Directory references saved.");
+  } catch (e) { toast(e.message, true); }
+}
+
 async function saveAccess() {
   try {
-    const data = await api("/api/plugins", {method: "POST", body: JSON.stringify({scopes: readScopes()})});
+    const data = await api("/api/plugins", {
+      method: "POST",
+      body: JSON.stringify({scopes: readScopes(), directory_refs: readRefs()})
+    });
+    renderRefs(data.directory_refs || {});
     renderScopes(data.scopes || []);
     $("scope-msg").textContent = "Saved.";
     toast("Access permissions saved.");
@@ -2483,6 +2590,8 @@ $("scope-save").addEventListener("click", saveAccess);
 $("scope-add").addEventListener("click", () => {
   renderScopes([...readScopes(), {label: "", source: "", mode: "ro", shell: true, search: true}]);
 });
+$("ref-save").addEventListener("click", saveReferences);
+$("ref-add").addEventListener("click", () => addRefRow());
 $("ch-refresh").addEventListener("click", loadChats);
 $("rename-cancel").addEventListener("click", () => { $("rename-modal").hidden = true; });
 $("rename-save").addEventListener("click", async () => {
@@ -2520,11 +2629,6 @@ $("folder-select").addEventListener("click", () => {
 });
 $("folder-close").addEventListener("click", closeFolderPicker);
 document.addEventListener("click", async (e) => {
-  const pickScope = e.target.closest && e.target.closest("[data-scope-pick]");
-  if (pickScope) {
-    await openFolderPicker(+pickScope.dataset.scopePick);
-    return;
-  }
   const browse = e.target.closest && e.target.closest("[data-scope-browse]");
   if (browse) {
     openFolderPicker(+browse.dataset.scopeBrowse);
@@ -2533,6 +2637,12 @@ document.addEventListener("click", async (e) => {
   const folder = e.target.closest && e.target.closest("[data-folder-path]");
   if (folder) {
     loadFolder(folder.dataset.folderPath);
+    return;
+  }
+  const refRemove = e.target.closest && e.target.closest("[data-ref-remove]");
+  if (refRemove) {
+    refRemove.closest("[data-ref-row]")?.remove();
+    if (!document.querySelector("[data-ref-row]")) renderRefs({});
     return;
   }
   const remove = e.target.closest && e.target.closest("[data-scope-remove]");
