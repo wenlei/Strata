@@ -89,6 +89,13 @@ class App:
                     or (Path.home() / ".local" / "share"))
         self.store_dir = base / "Strata" / "config-ui"
         self.store_dir.mkdir(parents=True, exist_ok=True)
+        # Live console: only a server this page started has its stdout attached here.
+        self._console_lines: list[str] = []
+        self._console_seq = 0
+        self._console_base = 0
+        self._console_lock = threading.Lock()
+        self._console_proc: subprocess.Popen | None = None
+        self._console_log = self.root / ".strata-mcp" / "server.log"
 
     def state(self, fresh: bool = False) -> dict:
         with self._state_lock:
@@ -101,9 +108,107 @@ class App:
             ports = {m.get("port") for m in installed.get("models", []) if isinstance(m.get("port"), int)}
             for p in sorted(ports):
                 lan[p] = lan_urls(p)
-            self._state = {"status": status, "models": models, "installed": installed, "lan": lan}
+            self._state = {"status": status, "models": models, "installed": installed,
+                           "image_models": self.image_models(), "lan": lan}
             self._state_at = time.time()
             return self._state
+
+    @staticmethod
+    def _image_role(name: str) -> str:
+        lower = name.lower()
+        if "vae" in lower:
+            return "VAE"
+        if "text" in lower or "clip" in lower or "encoder" in lower:
+            return "Text encoder"
+        return "Support"
+
+    @staticmethod
+    def _is_image_model_dir(path: Path) -> bool:
+        try:
+            names = {child.name.lower() for child in path.iterdir() if child.is_dir()}
+        except OSError:
+            return False
+        return any(path.glob("*.gguf")) or bool(
+            names & {"diffusion_models", "text_encoders", "vae", "unet", "checkpoints"}
+        )
+
+    @staticmethod
+    def _comfy_status(probe: bool = True) -> dict:
+        url = os.environ.get("STRATA_COMFYUI_URL", "http://127.0.0.1:8188").strip().rstrip("/")
+        out = {"url": url, "running": False, "queue": None}
+        if not probe:
+            return out
+        parsed = urllib.parse.urlsplit(url)
+        host = parsed.hostname or "127.0.0.1"
+        port = parsed.port or (443 if parsed.scheme == "https" else 80)
+        try:
+            with socket.create_connection((host, port), timeout=0.35):
+                pass
+        except OSError:
+            return out
+        status, body = mcp.http_json(url + "/system_stats", timeout=1.5)
+        if status == 200 and isinstance(body, dict):
+            out["running"] = True
+            info = body.get("exec_info") if isinstance(body.get("exec_info"), dict) else {}
+            queue = info.get("queue_remaining")
+            if isinstance(queue, int):
+                out["queue"] = queue
+        return out
+
+    def image_models(self, probe: bool = True) -> dict:
+        """Qwen-Image-2.1 files on disk and the ComfyUI server that runs them."""
+        configured = os.environ.get("STRATA_IMAGE_MODELS_DIR", "").strip()
+        root = Path(configured).expanduser() if configured else Path.home() / "lumWorkspace" / "models"
+        comfy = self._comfy_status(probe)
+        found = []
+        if root.is_dir():
+            if self._is_image_model_dir(root):
+                directories = [root]
+            else:
+                directories = [p for p in root.iterdir()
+                               if p.is_dir() and self._is_image_model_dir(p)]
+            for directory in directories:
+                variants, shared, total = [], [], 0
+                for path in sorted(directory.rglob("*"), key=lambda item: str(item).lower()):
+                    if not path.is_file() or path.suffix.lower() not in (".gguf", ".safetensors", ".pt", ".pth", ".bin"):
+                        continue
+                    try:
+                        size = path.stat().st_size
+                    except OSError:
+                        continue
+                    total += size
+                    relative = str(path.relative_to(directory)).lower()
+                    item = {"file": path.name, "gb": round(size / 1e9, 2)}
+                    if path.suffix.lower() == ".gguf":
+                        label = path.stem
+                        for prefix in (directory.name.lower() + "-", "qwen-image-2.1-uc-", "qwen-image-2.1-"):
+                            if label.lower().startswith(prefix):
+                                label = label[len(prefix):]
+                                break
+                        item.update({"label": label or path.stem,
+                                     "default": "q4" in label.lower() and "q8" not in label.lower()})
+                        variants.append(item)
+                    else:
+                        if "vae" in relative:
+                            role = "VAE"
+                        elif "text" in relative or "clip" in relative or "encoder" in relative:
+                            role = "Text encoder"
+                        else:
+                            role = self._image_role(path.name)
+                        item.update({"role": role})
+                        shared.append(item)
+                if variants:
+                    found.append({
+                        "name": "Qwen-Image-2.1" if "qwen-image" in directory.name.lower() else directory.name,
+                        "path": str(directory),
+                        "variants": variants,
+                        "shared": shared,
+                        "total_gb": round(total / 1e9, 2),
+                        "ready": bool(variants) and any(x.get("role") == "Text encoder" for x in shared)
+                                 and any(x.get("role") == "VAE" for x in shared),
+                        "comfyui": comfy,
+                    })
+        return {"directory": str(root), "models": found, "comfyui": comfy}
 
     @staticmethod
     def _keys(cfg: dict) -> list[str]:
@@ -376,6 +481,123 @@ class App:
     def stop(self, body: dict) -> dict:
         return self.tools.strata_stop(**self._checked("strata_stop", body))
 
+    def headless(self, body: dict) -> dict:
+        """Start or stop the model server exactly like _run_headless.bat does.
+
+        Stop finds whoever listens on 8080 and ends it; start launches the batch file
+        detached so its output keeps going to .strata-mcp/server.log.
+        """
+        action = (body.get("action") or "").strip().lower()
+        if action == "stop":
+            pid = self._port_pid(8080)
+            if not pid:
+                return {"summary": "nothing is listening on 8080", "pid": None}
+            subprocess.run(["taskkill", "/PID", str(pid), "/F"], capture_output=True, timeout=20)
+            if self._wait_port_free(8080, 5):
+                return {"summary": f"stopped pid {pid}", "pid": pid}
+            # A server started from another console can refuse taskkill; the CIM provider runs as SYSTEM.
+            self._wmi_terminate(pid)
+            if self._wait_port_free(8080, 8):
+                return {"summary": f"stopped pid {pid} (WMI fallback)", "pid": pid}
+            raise mcp.ToolError(f"could not stop pid {pid} on port 8080")
+        if action == "start":
+            if self._port_pid(8080):
+                return {"summary": "8080 is already listening"}
+            bat = ROOT / "_run_console.bat"
+            if not bat.is_file():
+                raise mcp.ToolError("_run_console.bat is missing next to setup.py")
+            flags = 0
+            startup = None
+            if os.name == "nt":
+                # Strata only prints its progress when it has a console; keep one, minimized,
+                # and capture stdout through a pipe so the page can stream it live.
+                flags = subprocess.CREATE_NEW_CONSOLE
+                startup = subprocess.STARTUPINFO()
+                startup.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+                startup.wShowWindow = 7  # SW_SHOWMINNOACTIVE
+            with self._console_lock:
+                self._console_lines = []
+                self._console_base = 0
+            env = dict(os.environ, PYTHONUNBUFFERED="1", PYTHONUTF8="1")
+            proc = subprocess.Popen(
+                ["cmd", "/c", str(bat)] if os.name == "nt" else ["/bin/sh", str(bat)],
+                cwd=str(ROOT), creationflags=flags, startupinfo=startup, env=env,
+                stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT, text=True, encoding="utf-8",
+                errors="replace", bufsize=1, close_fds=True,
+            )
+            self._console_proc = proc
+            threading.Thread(target=self._pump_console, args=(proc,), daemon=True).start()
+            return {"summary": "starting; streaming into the console panel"}
+        raise mcp.ToolError("action must be start or stop")
+
+    def _pump_console(self, proc: subprocess.Popen) -> None:
+        log = self._console_log
+        try:
+            log.parent.mkdir(parents=True, exist_ok=True)
+            with log.open("w", encoding="utf-8", errors="replace") as handle:
+                for line in proc.stdout:
+                    body = line.rstrip("\n")
+                    text = (time.strftime("%H:%M:%S ") + body) if body.strip() else ""
+                    handle.write(text + "\n")
+                    handle.flush()
+                    with self._console_lock:
+                        self._console_lines.append(text)
+                        if len(self._console_lines) > 5000:
+                            drop = len(self._console_lines) - 4000
+                            del self._console_lines[:drop]
+                            self._console_base += drop
+        except (OSError, ValueError):
+            pass
+
+    def console(self, query: dict) -> dict:
+        since = int(query.get("since") or 0)
+        with self._console_lock:
+            start = max(since, self._console_base)
+            skip = start - self._console_base
+            lines = self._console_lines[skip:]
+            seq = self._console_base + len(self._console_lines)
+            alive = self._console_proc is not None and self._console_proc.poll() is None
+        return {"seq": seq, "lines": lines, "attached": alive}
+
+    @staticmethod
+    def _port_pid(port: int) -> int | None:
+        try:
+            out = subprocess.run(
+                ["netstat", "-ano"], capture_output=True, text=True, timeout=15
+            ).stdout
+        except (OSError, subprocess.SubprocessError):
+            return None
+        for line in out.splitlines():
+            parts = line.split()
+            if len(parts) >= 5 and parts[3] == "LISTENING" and parts[1].endswith(f":{port}"):
+                try:
+                    return int(parts[-1])
+                except ValueError:
+                    return None
+        return None
+
+    @staticmethod
+    def _wait_port_free(port: int, seconds: float) -> bool:
+        deadline = time.time() + seconds
+        while time.time() < deadline:
+            if App._port_pid(port) is None:
+                return True
+            time.sleep(0.5)
+        return False
+
+    @staticmethod
+    def _wmi_terminate(pid: int) -> None:
+        ps = Path(os.environ.get("SystemRoot", r"C:\Windows")) / "System32" / "WindowsPowerShell" / "v1.0" / "powershell.exe"
+        if not ps.is_file():
+            return
+        subprocess.run(
+            [str(ps), "-NoProfile", "-Command",
+             f"Get-CimInstance Win32_Process -Filter 'ProcessId={pid}' | "
+             f"Invoke-CimMethod -MethodName Terminate | Out-Null"],
+            capture_output=True, timeout=40,
+        )
+
     def logs(self, query: dict) -> dict:
         body = {k: query.get(k) for k in ("source", "model", "lines") if query.get(k) not in (None, "")}
         if "lines" in body:
@@ -460,6 +682,7 @@ class App:
             "web": web,
             "agent": data.get("agent") if isinstance(data.get("agent"), dict) else {},
             "sandbox": data.get("sandbox") if isinstance(data.get("sandbox"), dict) else {},
+            "host_commands": data.get("host_commands") if isinstance(data.get("host_commands"), list) else [],
             "scopes": data.get("scopes") if isinstance(data.get("scopes"), list) else [],
             "port": None,
         }
@@ -489,6 +712,10 @@ class App:
             value = body.get(key)
             if isinstance(value, dict):
                 data[key] = value
+        if isinstance(body.get("host_commands"), list):
+            data["host_commands"] = [
+                str(item).strip() for item in body["host_commands"] if str(item).strip()
+            ]
         if isinstance(body.get("scopes"), list):
             data["scopes"] = body["scopes"]
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -560,6 +787,87 @@ class App:
         if status != 200 or not isinstance(body, dict):
             raise ValueError(f"cannot read that agent session (HTTP {status})")
         body["port"] = port
+        return body
+
+    def agent_memories(self, query: str = "") -> dict:
+        port, key = self._agent_target()
+        limit = 200
+        url = f"http://127.0.0.1:{port}/v1/agent/memories?limit={limit}"
+        if query.strip():
+            url += "&query=" + urllib.parse.quote(query.strip(), safe="")
+        status, body = mcp.http_json(url, api_key=key, timeout=5)
+        if status != 200 or not isinstance(body, dict):
+            raise ValueError(f"cannot read agent memories from port {port} (HTTP {status})")
+        body["port"] = port
+        return body
+
+    def create_agent_memory(self, body: dict) -> dict:
+        port, key = self._agent_target()
+        payload = {
+            "key": str(body.get("key") or "").strip(),
+            "value": str(body.get("value") or "").strip(),
+            "scope": str(body.get("scope") or "global").strip(),
+            "term": str(body.get("term") or "long").strip(),
+        }
+        session_id = str(body.get("session_id") or "").strip()
+        if session_id:
+            payload["session_id"] = session_id
+        status, result = mcp.http_json(
+            f"http://127.0.0.1:{port}/v1/agent/memories",
+            method="POST", body=payload, api_key=key, timeout=10,
+        )
+        if status != 200 or not isinstance(result, dict):
+            raise ValueError(f"cannot save agent memory (HTTP {status})")
+        return result
+
+    def update_agent_memory(self, body: dict) -> dict:
+        memory_id = str(body.get("id") or "").strip()
+        if not memory_id:
+            raise ValueError("id is required")
+        port, key = self._agent_target()
+        encoded = urllib.parse.quote(memory_id, safe="")
+        payload = {}
+        for name in ("key", "value", "scope", "term", "session_id"):
+            value = body.get(name)
+            if value is not None:
+                payload[name] = str(value).strip()
+        status, result = mcp.http_json(
+            f"http://127.0.0.1:{port}/v1/agent/memories/{encoded}/update",
+            method="POST", body=payload, api_key=key, timeout=10,
+        )
+        if status != 200 or not isinstance(result, dict):
+            raise ValueError(f"cannot update agent memory (HTTP {status})")
+        return result
+
+    def delete_agent_memory(self, memory_id: str) -> dict:
+        memory_id = str(memory_id or "").strip()
+        if not memory_id:
+            raise ValueError("id is required")
+        port, key = self._agent_target()
+        encoded = urllib.parse.quote(memory_id, safe="")
+        status, body = mcp.http_json(
+            f"http://127.0.0.1:{port}/v1/agent/memories/{encoded}",
+            method="DELETE", api_key=key, timeout=10,
+        )
+        if status not in (200, 404):
+            raise ValueError(f"cannot delete that agent memory (HTTP {status})")
+        return {"deleted": memory_id}
+
+    def rename_agent_session(self, session_id: str, title: str) -> dict:
+        session_id = str(session_id or "").strip()
+        title = str(title or "").strip()
+        if not session_id:
+            raise ValueError("id is required")
+        if not title:
+            raise ValueError("title is required")
+        port, key = self._agent_target()
+        encoded = urllib.parse.quote(session_id, safe="")
+        status, body = mcp.http_json(
+            f"http://127.0.0.1:{port}/v1/agent/sessions/{encoded}/rename",
+            method="POST", body={"title": title[:200]}, api_key=key, timeout=10,
+        )
+        if status != 200 or not isinstance(body, dict):
+            raise ValueError(f"cannot rename that agent session (HTTP {status})")
         return body
 
     def delete_agent_session(self, session_id: str) -> dict:
@@ -843,6 +1151,9 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/healthz":
             self._json(200, {"ok": True})
             return
+        if path == "/tdesign.css":
+            self._send(200, (TOOLS / "tdesign.css").read_bytes(), "text/css; charset=utf-8")
+            return
         if not self._token_ok():
             self._error(401, "open this page from the address it printed")
             return
@@ -865,6 +1176,8 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(200, self._app().model_config(query.get("model", [""])[0]))
             elif path == "/api/logs":
                 self._json(200, self._app().logs({k: v[0] for k, v in query.items()}))
+            elif path == "/api/console":
+                self._json(200, self._app().console({k: v[0] for k, v in query.items()}))
             elif path == "/api/connect":
                 port = query.get("port", [None])[0]
                 self._json(200, self._app().connect(int(port) if port else None))
@@ -876,6 +1189,8 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(200, self._app().agent_sessions())
             elif path == "/api/agent/session":
                 self._json(200, self._app().agent_session(query.get("id", [""])[0]))
+            elif path == "/api/agent/memory":
+                self._json(200, self._app().agent_memories(query.get("query", [""])[0]))
             elif path == "/api/browse":
                 self._json(200, self._app().browse(query.get("path", [""])[0]))
             elif path == "/api/pick-folder":
@@ -918,14 +1233,26 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(200, self._app().start(body))
             elif path == "/api/stop":
                 self._json(200, self._app().stop(body))
+            elif path == "/api/headless":
+                self._json(200, self._app().headless(body))
             elif path == "/api/tasks/stop":
                 self._json(200, self._app().stop_task(body))
             elif path == "/api/tasks/clear":
                 self._json(200, self._app().clear_tasks())
             elif path == "/api/plugins":
                 self._json(200, self._app().save_plugins(body))
+            elif path == "/api/agent/session/rename":
+                self._json(200, self._app().rename_agent_session(
+                    body.get("id", ""), body.get("title", "")
+                ))
             elif path == "/api/agent/session/delete":
                 self._json(200, self._app().delete_agent_session(body.get("id", "")))
+            elif path == "/api/agent/memory":
+                self._json(200, self._app().create_agent_memory(body))
+            elif path == "/api/agent/memory/update":
+                self._json(200, self._app().update_agent_memory(body))
+            elif path == "/api/agent/memory/delete":
+                self._json(200, self._app().delete_agent_memory(body.get("id", "")))
             elif path == "/api/sessions/save":
                 self._json(200, self._app().save_session(body))
             elif path == "/api/sessions/delete":

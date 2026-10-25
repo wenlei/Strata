@@ -7,8 +7,10 @@ No GPU, no model and no download: the Strata folder is a temporary one with a st
 from __future__ import annotations
 
 import json
+import os
 import sys
 import tempfile
+from unittest import mock
 import threading
 import unittest
 import urllib.error
@@ -41,6 +43,12 @@ class Folder(unittest.TestCase):
 
     def cfg(self):
         return json.loads((self.root / "strata-iq3_s.json").read_text(encoding="utf-8"))
+
+    def test_local_host_commands_roundtrip(self):
+        data_dir = self.root / "agent-data"
+        with mock.patch.dict(os.environ, {"STRATA_AGENT_DATA_DIR": str(data_dir)}):
+            self.app._save_local_plugins({"host_commands": ["echo hi", "  "]})
+            self.assertEqual(self.app._local_plugins()["host_commands"], ["echo hi"])
 
     def test_lan_without_a_key_is_refused(self):
         with self.assertRaises(ValueError):
@@ -128,6 +136,24 @@ class Folder(unittest.TestCase):
         for k in ("exe", "args", "model_name", "log", "keep_me"):
             self.assertEqual(cfg[k], CFG[k], k)
         self.assertNotIn("api_key", cfg)
+
+    def test_image_models_lists_qwen_files(self):
+        model = self.root / "models" / "qwen-image-2.1-uc"
+        for folder in ("diffusion_models", "text_encoders", "vae"):
+            (model / folder).mkdir(parents=True)
+        (model / "diffusion_models" / "qwen-image-2.1-UC-Q4_K_M.gguf").write_bytes(b"q4")
+        (model / "diffusion_models" / "qwen-image-2.1-UC-Q8_0.gguf").write_bytes(b"q8")
+        (model / "text_encoders" / "qwen3vl_8b_int8_convrot.safetensors").write_bytes(b"te")
+        (model / "vae" / "qwen_image_2.1_vae_bf16.safetensors").write_bytes(b"vae")
+        with mock.patch.dict("os.environ", {"STRATA_IMAGE_MODELS_DIR": str(self.root / "models")}):
+            out = self.app.image_models(probe=False)
+        self.assertEqual(len(out["models"]), 1)
+        entry = out["models"][0]
+        self.assertEqual(entry["name"], "Qwen-Image-2.1")
+        self.assertTrue(entry["ready"])
+        self.assertEqual([v["label"] for v in entry["variants"]], ["Q4_K_M", "Q8_0"])
+        self.assertTrue(entry["variants"][0]["default"])
+        self.assertEqual({v["role"] for v in entry["shared"]}, {"Text encoder", "VAE"})
 
     def test_an_unknown_model_is_refused(self):
         with self.assertRaises(Exception):

@@ -46,6 +46,10 @@ code,pre{font-family:ui-monospace,SFMono-Regular,Consolas,"Liberation Mono",mono
 .key-full{word-break:break-all}
 pre{background:color-mix(in srgb,var(--bg) 70%,var(--card));border:1px solid var(--line);border-radius:10px;
   padding:12px;max-height:380px;overflow:auto;white-space:pre-wrap;word-break:break-word;margin:0}
+#console-out{background:#0b0f14;color:#c9d6e2;border-color:#1d2a36;max-height:60vh;white-space:pre;
+  word-break:normal;font-size:12.5px;line-height:1.45;tab-size:4;padding:10px 12px}
+#console-out::-webkit-scrollbar{width:10px;height:10px}
+#console-out::-webkit-scrollbar-thumb{background:#26323d;border-radius:6px}
 a{color:var(--accent2)}
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;border:1px solid var(--line);background:var(--card);
   color:var(--ink);padding:8px 13px;border-radius:9px;font:inherit;font-size:13.5px;cursor:pointer;text-decoration:none;
@@ -71,10 +75,30 @@ input:focus,select:focus,textarea:focus{outline:2px solid color-mix(in srgb,var(
 .model .meta{display:flex;gap:14px;flex-wrap:wrap;color:var(--muted);font-size:12.5px;margin-bottom:9px}
 .tag{font-size:11.5px;padding:1px 8px;border-radius:999px;background:var(--pill);color:var(--muted)}
 .tag.ok{color:var(--ok)} .tag.warn{color:var(--warn)} .tag.bad{color:var(--bad)}
+.policy-select{width:auto;min-width:76px;max-width:110px;height:24px;padding:0 5px;border:0;font:inherit;font-size:11.5px;cursor:pointer;outline:none;flex:0 0 auto}
+#tab-plugins .card > h2,#tab-access .card > h2{cursor:pointer;display:flex;align-items:center;gap:6px;user-select:none}
+#tab-plugins .card > h2::after,#tab-access .card > h2::after{content:"⌄";margin-left:auto;color:var(--muted);font-size:16px;line-height:1;transition:transform .15s ease}
+#tab-plugins .card.collapsed > *:not(h2),#tab-access .card.collapsed > *:not(h2){display:none}
+#tab-plugins .card.collapsed > h2::after,#tab-access .card.collapsed > h2::after{transform:rotate(-90deg)}
 .plugin-row{display:flex;gap:10px;align-items:flex-start;padding:10px 0;border-bottom:1px solid var(--line)}
 .plugin-row:last-child{border-bottom:0}
 .plugin-row input[type=checkbox]{margin-top:3px}
 .plugin-row .plugin-tools{margin-top:3px;color:var(--muted);font-size:12px}
+.tool-row{display:flex;gap:8px;align-items:flex-start;padding:6px 0 0;flex-wrap:wrap}
+.tool-row label{display:flex;gap:6px;align-items:center;cursor:pointer}
+.tool-row .tool-detail{flex:1 1 100%;color:var(--muted);font-size:11.5px}
+.tool-row details{margin:2px 0 0;font-size:11.5px;color:var(--muted)}
+.tool-row details pre{max-height:180px;margin:4px 0 0;font-size:11px}
+.plugin-fold > summary{cursor:pointer;list-style:none;display:flex;align-items:center;gap:6px;flex-wrap:wrap;user-select:none}
+.plugin-fold > summary::-webkit-details-marker{display:none}
+.plugin-fold > summary::after{content:"⌄";margin-left:auto;color:var(--muted);font-size:15px;line-height:1;transition:transform .15s ease}
+.plugin-fold[open] > summary::after{transform:rotate(180deg)}
+.plugin-config{margin-top:10px;border-top:1px solid var(--line);padding-top:8px}
+.plugin-config > summary{cursor:pointer;font-weight:600;color:var(--ink);margin-bottom:8px;user-select:none}
+.plugin-config > summary .muted{font-weight:400;font-size:12px;margin-left:4px}
+.mcp-group{margin-top:8px;border-top:1px solid var(--line);padding-top:8px}
+.mcp-group-head{display:flex;align-items:center;gap:8px;font-weight:600;margin-bottom:4px;cursor:pointer;user-select:none}
+.mcp-group[open] .mcp-group-head{margin-bottom:8px}
 .chat-row{display:flex;align-items:center;gap:8px;width:100%;border:1px solid var(--line);background:var(--card);
   border-radius:10px;padding:8px 10px;margin:0 0 8px;font:inherit;color:var(--ink)}
 .chat-row:hover{background:var(--pill)}
@@ -114,10 +138,206 @@ input:focus,select:focus,textarea:focus{outline:2px solid color-mix(in srgb,var(
   box-sizing:border-box;width:54px;min-width:54px;max-width:54px;padding:2px 2px;
   font:inherit;font-size:12px;height:28px;cursor:pointer;margin-left:8px}
 </style>
+<style>
+:root{
+  --td-brand-color:#0052d9; --td-brand-color-hover:#366ef4; --td-brand-color-active:#0034b5;
+  --td-error-color:#d54941; --td-success-color:#2ba471; --td-warning-color:#e37318;
+  --td-bg-color-page:#f5f7fa; --td-bg-color-container:#ffffff;
+  --td-text-color-primary:#000000e6; --td-text-color-secondary:#00000099;
+  --td-text-color-placeholder:#0000004d; --td-border-level-1-color:#e7e7e7;
+  --td-component-border:#dcdcdc; --td-radius-small:4px; --td-radius-default:6px;
+  --td-radius-medium:9px; --td-radius-large:12px;
+  --td-shadow-1:0 1px 2px rgba(0,0,0,.04),0 2px 8px rgba(0,0,0,.04);
+  --bg:var(--td-bg-color-page); --card:var(--td-bg-color-container); --ink:var(--td-text-color-primary);
+  --muted:var(--td-text-color-secondary); --line:var(--td-border-level-1-color);
+  --accent:var(--td-brand-color); --accent2:var(--td-brand-color-hover);
+  --ok:var(--td-success-color); --warn:var(--td-warning-color); --bad:var(--td-error-color);
+  --pill:#f2f3f5; --shadow:var(--td-shadow-1);
+}
+@media (prefers-color-scheme:dark){
+  :root{
+    --td-brand-color:#4582e6; --td-brand-color-hover:#5e93ea; --td-brand-color-active:#366ef4;
+    --td-bg-color-page:#181818; --td-bg-color-container:#1f1f1f;
+    --td-text-color-primary:#ffffff; --td-text-color-secondary:#ffffff99;
+    --td-text-color-placeholder:#ffffff4d; --td-border-level-1-color:#2c2c2c;
+    --td-component-border:#3a3a3a; --pill:#2a2a2a;
+    --td-shadow-1:0 1px 2px rgba(0,0,0,.3),0 4px 14px rgba(0,0,0,.2);
+  }
+}
+*{box-sizing:border-box}
+body{
+  margin:0;background:var(--td-bg-color-page);color:var(--td-text-color-primary);
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+  -webkit-font-smoothing:antialiased;
+}
+header{
+  display:flex;align-items:center;gap:14px;height:64px;padding:0 24px;
+  position:sticky;top:0;z-index:40;background:var(--td-bg-color-container);
+  border-bottom:1px solid var(--td-border-level-1-color);backdrop-filter:blur(12px);flex-wrap:nowrap;
+}
+.brand{display:flex;flex-direction:column;align-items:center;gap:1px;font-weight:600;letter-spacing:0;color:var(--td-text-color-primary);white-space:nowrap}
+.brand .brand-logo{display:block;width:96px;height:35px;flex:0 0 auto}
+.brand .brand-word{font-weight:600;color:var(--td-text-color-primary);font-size:11px;line-height:1;letter-spacing:.18em;text-transform:lowercase}
+.brand span{font-weight:400;color:var(--td-text-color-secondary);font-size:13px;margin-left:0}
+.pill{height:24px;display:inline-flex;align-items:center;padding:0 8px;border-radius:var(--td-radius-small);background:var(--pill);color:var(--td-text-color-secondary);font-size:12px;font-weight:500}
+.pill.ok{color:var(--td-success-color)} .pill.bad{color:var(--td-error-color)} .pill.warn{color:var(--td-warning-color)}
+.spacer{flex:1}
+nav{
+  display:flex;flex-direction:row;align-items:center;justify-content:center;gap:2px;width:100%;max-width:none;margin:0;
+  padding:0 24px;background:var(--td-bg-color-container);
+  border-bottom:1px solid var(--td-border-level-1-color);position:sticky;top:64px;height:48px;
+  overflow-x:auto;overflow-y:hidden;z-index:35;
+}
+nav button{
+  display:flex;flex:0 0 auto;align-items:center;gap:8px;text-align:center;border:0;border-bottom:2px solid transparent;
+  background:transparent;color:var(--td-text-color-secondary);padding:0 14px;height:48px;border-radius:0;
+  font:inherit;font-size:14px;cursor:pointer;transition:color .15s,border-color .15s,background .15s;
+}
+nav button:hover{background:var(--pill);color:var(--td-text-color-primary)}
+nav button.active{background:transparent;border-bottom-color:var(--td-brand-color);color:var(--td-brand-color);font-weight:600;box-shadow:none}
+main{width:100%;max-width:1320px;margin:0 auto;padding:24px 32px 72px}
+.card{background:var(--td-bg-color-container);border:1px solid var(--td-border-level-1-color);border-radius:var(--td-radius-medium);padding:20px 22px;box-shadow:none;margin:0 0 16px}
+.card h2{font-size:16px;font-weight:600;margin:0 0 16px;letter-spacing:0;color:var(--td-text-color-primary)}
+.card h2 small{font-weight:400;color:var(--td-text-color-secondary);font-size:12px;margin-left:8px}
+a{color:var(--td-brand-color);text-decoration:none} a:hover{color:var(--td-brand-color-hover)}
+.btn{height:32px;padding:0 14px;border:1px solid var(--td-component-border);border-radius:var(--td-radius-default);background:var(--td-bg-color-container);color:var(--td-text-color-primary);font-size:14px;font-weight:400;box-shadow:none}
+.btn:hover{background:var(--pill);border-color:var(--td-component-border);color:var(--td-text-color-primary)}
+.btn.primary{background:var(--td-brand-color);border-color:var(--td-brand-color);color:#fff}
+.btn.primary:hover{background:var(--td-brand-color-hover);border-color:var(--td-brand-color-hover);color:#fff}
+.btn.danger{background:transparent;border-color:var(--td-error-color);color:var(--td-error-color)}
+.btn.danger:hover{background:color-mix(in srgb,var(--td-error-color) 8%,transparent);color:var(--td-error-color)}
+label.field{margin:0 0 14px}
+label.field span{font-size:12px;color:var(--td-text-color-secondary);margin-bottom:6px}
+input[type=text],input[type=password],input[type=number],input[type=search],select,textarea{
+  height:32px;padding:0 11px;border:1px solid var(--td-component-border);border-radius:var(--td-radius-default);
+  background:var(--td-bg-color-container);color:var(--td-text-color-primary);font-size:14px;box-shadow:none;
+}
+textarea{height:auto;padding:8px 11px;font-family:ui-monospace,SFMono-Regular,Consolas,"Liberation Mono",monospace;font-size:13px}
+input::placeholder,textarea::placeholder{color:var(--td-text-color-placeholder)}
+input:focus,select:focus,textarea:focus{outline:none;border-color:var(--td-brand-color);box-shadow:0 0 0 2px color-mix(in srgb,var(--td-brand-color) 16%,transparent)}
+.fact,.model,.scope-row,.chat-row,.chat-msg{background:var(--td-bg-color-container);border-color:var(--td-border-level-1-color);border-radius:var(--td-radius-default);box-shadow:none}
+.model{background:color-mix(in srgb,var(--td-bg-color-page) 58%,var(--td-bg-color-container));padding:14px 16px;margin-bottom:10px}
+.model .top{margin-bottom:8px}
+.model .name{font-weight:600}
+.tag{border-radius:var(--td-radius-small);background:var(--pill);color:var(--td-text-color-secondary);padding:1px 7px;font-size:12px}
+.note{border-left:3px solid var(--td-warning-color);background:color-mix(in srgb,var(--td-warning-color) 7%,var(--td-bg-color-container));border-radius:0 var(--td-radius-default) var(--td-radius-default) 0;color:var(--td-text-color-secondary)}
+pre{background:var(--td-bg-color-page);border-color:var(--td-border-level-1-color);border-radius:var(--td-radius-default)}
+.lang-select{height:32px;width:64px;min-width:64px;max-width:64px;padding:0 6px;border-radius:var(--td-radius-default);background:var(--td-bg-color-container);color:var(--td-text-color-primary);border-color:var(--td-component-border);font-size:13px}
+.toast{background:var(--td-text-color-primary);color:var(--td-bg-color-container);border-radius:var(--td-radius-medium);box-shadow:0 6px 20px rgba(0,0,0,.18)}
+.toast.bad{background:var(--td-error-color);color:#fff}
+.access-hero{display:flex;align-items:flex-start;gap:24px;justify-content:space-between}
+.access-hero__copy h2{margin-bottom:6px}
+.access-hero__copy p{margin:0;max-width:720px}
+.access-summary{display:flex;gap:10px;flex:0 0 auto}
+.access-summary div{min-width:84px;padding:10px 12px;border:1px solid var(--td-border-level-1-color);border-radius:var(--td-radius-default);background:var(--td-bg-color-page);text-align:center}
+.access-summary b{display:block;font-size:22px;line-height:1.2;color:var(--td-brand-color)}
+.access-summary span{font-size:12px;color:var(--td-text-color-secondary)}
+.scope-list{display:flex;flex-direction:column;gap:12px;margin-bottom:16px}
+.scope-card{background:var(--td-bg-color-container);border:1px solid var(--td-border-level-1-color);border-radius:var(--td-radius-medium);padding:16px 18px}
+.scope-card__head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:14px}
+.scope-card__identity{display:flex;align-items:center;gap:12px;min-width:0;flex:1}
+.scope-mode-mark{display:inline-flex;align-items:center;justify-content:center;width:38px;height:38px;flex:0 0 auto;border-radius:10px;background:var(--td-bg-color-page);border:1px solid var(--td-border-level-1-color);color:var(--td-text-color-secondary);font-size:12px;font-weight:700;letter-spacing:.04em}
+.scope-mode-mark.is-rw{background:color-mix(in srgb,var(--td-brand-color) 10%,var(--td-bg-color-container));border-color:color-mix(in srgb,var(--td-brand-color) 28%,var(--td-border-level-1-color));color:var(--td-brand-color)}
+.scope-card__name{min-width:0;display:flex;flex-direction:column;gap:2px}
+.scope-card__name input{border:1px solid transparent;background:transparent;height:28px;padding:0 4px;font-weight:600;font-size:15px}
+.scope-card__name input:hover{border-color:var(--td-border-level-1-color)}
+.scope-card__name input:focus{background:var(--td-bg-color-container);border-color:var(--td-brand-color)}
+.scope-card__side{display:flex;align-items:center;gap:10px;flex:0 0 auto}
+.scope-card__grid{display:grid;grid-template-columns:minmax(0,2fr) minmax(160px,.7fr);gap:12px}
+.scope-card__grid .field{margin:0}
+.scope-source-row{display:flex;gap:8px;align-items:center;width:100%}
+.scope-source-row input{flex:1 1 auto;width:100%;min-width:0;cursor:pointer}
+.scope-card__grid{grid-template-columns:minmax(0,1fr) 180px}
+.scope-card__options{display:flex;align-items:center;gap:20px;flex-wrap:wrap;margin-top:10px;padding-top:12px;border-top:1px solid var(--td-border-level-1-color)}
+.scope-toggle{display:inline-flex;align-items:center;gap:8px;font-size:13px;color:var(--td-text-color-primary);cursor:pointer}
+.scope-toggle input{width:16px;height:16px;accent-color:var(--td-brand-color)}
+.scope-empty{padding:28px;text-align:center}
+.scope-empty b{display:block;margin-bottom:6px}
+.scope-empty p{margin:0 0 12px}
+.access-actions{display:flex;align-items:center;gap:16px;justify-content:space-between;flex-wrap:wrap}
+.memory-search-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:end;margin-bottom:12px}
+.memory-search-row .field{width:100%;min-width:0;margin:0}
+.memory-search-row input{width:100%;min-width:0}
+.hide{display:none!important}
+@media(max-width:640px){.memory-search-row{grid-template-columns:1fr}}
+@media(max-width:900px){
+  header{height:auto;min-height:60px;padding:10px 16px;position:sticky;gap:10px}
+  .brand .brand-logo{width:72px;height:26px}
+  nav{position:sticky;top:60px;height:44px;gap:0;padding:0 12px;overflow-x:auto;z-index:30;justify-content:flex-start}
+  nav button{height:44px;padding:0 11px;white-space:nowrap;font-size:13px}
+  main{padding:18px 14px 48px;max-width:none}
+  .card{padding:16px;border-radius:var(--td-radius-medium)}
+  .lang-select{margin-left:0}
+  .access-hero{display:block}
+  .access-summary{margin-top:14px;display:grid;grid-template-columns:repeat(3,1fr)}
+  .access-summary div{min-width:0}
+  .scope-card{padding:14px}
+  .scope-card__head{flex-direction:column}
+  .scope-card__side{width:100%;justify-content:space-between}
+  .scope-card__grid{grid-template-columns:1fr}
+  .scope-card__options{gap:12px}
+  .access-actions{display:block}
+}
+</style>
+<link rel="stylesheet" href="/tdesign.css">
+<style>
+@media (prefers-color-scheme:dark){
+  :root{
+    --td-brand-color:#4582e6; --td-brand-color-hover:#5e93ea; --td-brand-color-active:#366ef4;
+    --td-bg-color-page:#181818; --td-bg-color-container:#1f1f1f;
+    --td-text-color-primary:#ffffff; --td-text-color-secondary:#ffffff99;
+    --td-text-color-placeholder:#ffffff4d; --td-border-level-1-color:#2c2c2c;
+    --td-component-border:#3a3a3a;
+  }
+}
+.btn,
+.btn.t-button {
+  height: 32px;
+  min-width: 76px;
+  padding: 0 16px;
+  border-radius: var(--td-radius-default);
+  font-size: 14px;
+  line-height: 1;
+  white-space: nowrap;
+}
+.row { gap: 8px; }
+.scope-source-row,
+label.field .scope-source-row { display: grid; grid-template-columns: minmax(0, 1fr) 76px; gap: 8px; align-items: center; width: 100%; margin: 0; }
+.scope-source-row .btn,
+.scope-source-row .btn.t-button { width: 76px; min-width: 76px; padding: 0 12px; }
+.scope-card__side { gap: 8px; }
+.scope-card__side .btn,
+.scope-card__side .btn.t-button { min-width: 86px; }
+.scope-card__grid { gap: 16px; }
+.access-actions .row { gap: 8px; }
+.card .row > .btn,
+.card .row > .btn.t-button { flex: 0 0 auto; }
+</style>
 </head>
 <body>
 <header>
-  <div class="brand">Lum <span>Settings</span></div>
+  <div class="brand" aria-label="Lum Settings">
+    <svg class="brand-logo" viewBox="0 160 512 184" role="img" aria-label="Lum">
+      <defs>
+        <linearGradient id="brand-trio" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stop-color="#F6C7B4"/>
+          <stop offset=".42" stop-color="#E8C8DF"/>
+          <stop offset=".72" stop-color="#C9C5EF"/>
+          <stop offset="1" stop-color="#B8E7D1"/>
+        </linearGradient>
+      </defs>
+      <g transform="translate(4,176)" fill="url(#brand-trio)">
+        <path d="M 80,8 L 118.528,88.64 L 109.663,103.488 L 126.784,105.92 L 148.8,152 L 11.2,152 Z"/>
+      </g>
+      <g transform="translate(176,176)" fill="url(#brand-trio)">
+        <path d="M 71.03,6.949 A 73.6,73.6 0 1 0 88.97,6.949 L 80,18.176 Z"/>
+      </g>
+      <g transform="translate(348,176)" fill="url(#brand-trio)">
+        <path d="M 8,8 L 71,8 L 80,26 L 89,8 L 152,8 L 152,152 L 121,152 L 112,134 L 103,152 L 57,152 L 48,134 L 39,152 L 8,152 Z"/>
+      </g>
+    </svg>
+    <span class="brand-word">lum</span>
+  </div>
   <div class="pill" id="status-pill">checking...</div>
   <div class="spacer"></div>
   <a class="btn" id="chat-link" href="http://127.0.0.1:8080/" target="_blank" rel="noopener">Open chat</a>
@@ -137,6 +357,7 @@ input:focus,select:focus,textarea:focus{outline:2px solid color-mix(in srgb,var(
   <button data-tab="chats">Chats</button>
   <button data-tab="sessions">Sessions</button>
   <button data-tab="memory">Memory</button>
+  <button data-tab="console">Console</button>
   <button data-tab="logs">Logs</button>
 </nav>
 <main>
@@ -152,6 +373,12 @@ input:focus,select:focus,textarea:focus{outline:2px solid color-mix(in srgb,var(
       <div id="model-list"><p class="muted">Checking...</p></div>
       <div class="note" id="outside-note">A model started from its own window or <code>run-*.bat</code> can only be
         unloaded here; close its window to end it. Models started below are fully managed.</div>
+    </div>
+    <div class="card">
+      <h2>Image models <small>Qwen-Image-2.1 / ComfyUI</small></h2>
+      <div id="image-model-list"><p class="muted">Checking...</p></div>
+      <div class="note">Image generation uses ComfyUI on port 8188. The Lum agent unloads the text model
+        before generating and reloads it afterwards.</div>
     </div>
   </section>
 
@@ -193,7 +420,7 @@ input:focus,select:focus,textarea:focus{outline:2px solid color-mix(in srgb,var(
       <label class="field"><span>API keys <span class="muted" id="n-key-state"></span></span>
         <div id="n-key-list"></div>
       </label>
-      <label class="field"><span>Add a key <span class="muted">(at least 16 characters; shown so you can check it)</span></span>
+      <label class="field"><span>Add a key <span class="muted">(any length; Generate makes a strong key)</span></span>
         <input id="n-key" type="text" autocomplete="off" spellcheck="false" placeholder="Paste a new key">
       </label>
       <div class="row" style="margin-bottom:12px">
@@ -204,6 +431,20 @@ input:focus,select:focus,textarea:focus{outline:2px solid color-mix(in srgb,var(
       <div class="note">Every configured key works; clients can use any one. A key is required when other devices can
         reach the server. Changes are used the next time the model starts.</div>
       <div id="n-result"></div>
+    </div>
+    <div class="card">
+      <h2>Web fetch <small>DNS and SSRF checks</small></h2>
+      <label class="plugin-row">
+        <input type="checkbox" id="p-allow-fake">
+        <span><b>Allow fake-IP ranges</b>
+          <div class="small muted">Allow the local proxy's synthetic DNS addresses; other private and loopback ranges stay blocked.</div>
+        </span>
+      </label>
+      <label class="field"><span>Allowed CIDRs <small>one per line or comma separated</small></span>
+        <textarea id="p-fake-nets" rows="3" spellcheck="false" placeholder="198.18.0.0/15"></textarea>
+      </label>
+      <div class="note">A /0 range is rejected. These ranges bypass the public-address check only for web_fetch.</div>
+      <div class="row"><button class="btn primary" id="p-fetch-save">Save web fetch</button></div>
     </div>
   </section>
 
@@ -247,38 +488,32 @@ input:focus,select:focus,textarea:focus{outline:2px solid color-mix(in srgb,var(
       <div id="p-list"><p class="muted">Checking...</p></div>
       <div class="row"><span class="muted small" id="p-msg"></span></div>
     </div>
-    <div class="card">
-      <h2>Web search <small>used by the Web plugin</small></h2>
-      <div class="three">
-        <label class="field"><span>Provider</span><select id="p-provider">
-          <option value="none">none</option><option value="searxng">searxng</option>
-          <option value="brave">brave</option><option value="bing">bing (key optional)</option>
-        </select></label>
-        <label class="field"><span>SearXNG URL</span><input id="p-url" type="text" placeholder="https://search.example"></label>
-        <label class="field"><span>API key</span><input id="p-key" type="password" placeholder="leave blank to keep"></label>
+  </section>
+
+  <section id="tab-access">
+    <div class="card access-hero">
+      <div class="access-hero__copy">
+        <h2>Access permissions <small>folders the agent may read or write</small></h2>
+        <p class="muted">These are host folders or NAS shares. The agent uses the host path; Docker Shell sees them under <code>/scopes/&lt;name&gt;</code>.</p>
       </div>
-      <label class="small"><input type="checkbox" id="p-clear"> clear the saved search key</label>
-      <div class="row"><button class="btn primary" id="p-save">Save plugins</button>
-        <span class="muted small" id="p-status"></span></div>
+      <div class="access-summary" id="scope-summary"></div>
     </div>
-    <div class="card">
-      <h2>Web fetch <small>DNS and SSRF checks</small></h2>
-      <label class="plugin-row">
-        <input type="checkbox" id="p-allow-fake">
-        <span><b>Allow fake-IP ranges</b>
-          <div class="small muted">Allow the local proxy's synthetic DNS addresses; other private and loopback ranges stay blocked.</div>
-        </span>
-      </label>
-      <label class="field"><span>Allowed CIDRs <small>one per line or comma separated</small></span>
-        <textarea id="p-fake-nets" rows="3" spellcheck="false" placeholder="198.18.0.0/15"></textarea>
-      </label>
-      <div class="note">A /0 range is rejected. These ranges bypass the public-address check only for web_fetch.</div>
-      <div class="row"><button class="btn primary" id="p-fetch-save">Save web fetch</button></div>
+    <div class="scope-list" id="scope-list"><p class="muted">Checking...</p></div>
+    <div class="card access-actions">
+      <div class="row">
+        <button class="btn" id="scope-add">Add folder</button>
+        <button class="btn primary" id="scope-save">Save access</button>
+        <span class="muted small" id="scope-msg"></span>
+      </div>
+      <span class="muted small">Keep scopes outside the workspace. The workspace itself is always read-write.</span>
     </div>
     <div class="card">
       <h2>Agent limits <small>per task</small></h2>
       <label class="field"><span>Max tool rounds</span>
         <input id="p-rounds" type="number" min="1" max="64" step="1">
+      </label>
+      <label class="field"><span>Max task segments</span>
+        <input id="p-segments" type="number" min="1" max="16" step="1">
       </label>
       <label class="field"><span>Approval mode</span>
         <select id="p-approval">
@@ -307,20 +542,14 @@ input:focus,select:focus,textarea:focus{outline:2px solid color-mix(in srgb,var(
       <div class="small muted" id="p-sandbox-workspace">Workspace: ...</div>
       <div class="note">Shell runs in a throwaway container without root or a writable system disk. The workspace is mounted at /workspace; access scopes are mounted at /scopes/&lt;name&gt;. Allow network lets the container reach your LAN and the internet; keep it off unless the task needs it. Requires Docker Desktop + WSL2 (Windows) or Docker Engine.</div>
       <div class="row"><button class="btn primary" id="p-sandbox-save">Save sandbox</button></div>
-    </div>
-  </section>
-
-  <section id="tab-access">
-    <div class="card">
-      <h2>Access permissions <small>sandbox scopes</small></h2>
-      <div class="note">These are host folders (Windows paths or NAS shares), not paths inside the sandbox. The model accesses them by host path; the Docker shell sees them at /scopes/&lt;name&gt;. <b>ro</b> is read-only; <b>rw</b> allows writes. File tools enforce the same modes. Keep scopes outside the workspace; the workspace itself is read-write.</div>
-      <div id="scope-list"><p class="muted">Checking...</p></div>
-        <div class="row">
-          <button class="btn" id="scope-add">Add folder</button>
-          <button class="btn primary" id="scope-save">Save access</button>
-          <span class="muted small" id="scope-msg"></span>
-        </div>
-      </div>
+      <details class="plugin-config">
+        <summary>Host command allowlist <span class="muted">exact commands that run outside Docker</span></summary>
+        <label class="field"><span>Commands <small>one per line; exact match; run from the workspace root</small></span>
+          <textarea id="p-host-commands" rows="5" spellcheck="false" placeholder="cd android &amp;&amp; .\gradlew.bat :app:assembleDebug :app:testDebugUnitTest"></textarea>
+        </label>
+        <div class="note">Only these exact command lines run on the host. Everything else stays in Docker. Shell approval still applies; do not add destructive commands.</div>
+        <div class="row"><button class="btn primary" id="p-host-save">Save allowlist</button></div>
+      </details>
     </div>
   </section>
 
@@ -338,6 +567,17 @@ input:focus,select:focus,textarea:focus{outline:2px solid color-mix(in srgb,var(
       </div>
       <div class="folder-list" id="folder-list"></div>
       <div class="small muted">Only folders are shown. Network shares are listed under the NAS roots.</div>
+    </div>
+  </div>
+
+  <div class="modal" id="rename-modal" hidden>
+    <div class="modal-card" style="max-width:440px">
+      <h2 style="margin:0 0 14px">Rename session</h2>
+      <label class="field"><span>Session name</span><input id="rename-title" type="text" autocomplete="off"></label>
+      <div class="row" style="justify-content:flex-end">
+        <button class="btn" id="rename-cancel" type="button">Cancel</button>
+        <button class="btn primary" id="rename-save" type="button">Save name</button>
+      </div>
     </div>
   </div>
 
@@ -373,27 +613,53 @@ input:focus,select:focus,textarea:focus{outline:2px solid color-mix(in srgb,var(
 
   <section id="tab-memory">
     <div class="card">
-      <h2>Long-term memory <small>stored on this PC</small></h2>
+      <h2 id="am-form-title">Add memory <small>default global + long-term</small></h2>
       <div class="three">
-        <label class="field"><span>Title</span><input id="m-title" type="text" placeholder="e.g. User preferences"></label>
-        <label class="field"><span>Tags</span><input id="m-tags" type="text" placeholder="comma separated"></label>
+        <label class="field"><span>Key</span><input id="am-key" type="text" placeholder="e.g. preference-language"></label>
+        <label class="field"><span>Scope</span><select id="am-scope"><option value="global">Global</option><option value="session">Session</option></select></label>
+        <label class="field"><span>Term</span><select id="am-term"><option value="long">Long-term</option><option value="short">Short-term</option></select></label>
       </div>
-      <label class="field"><span>Content</span><textarea id="m-content" rows="4" placeholder="Facts, preferences, project notes..."></textarea></label>
+      <label class="field"><span>Session <span class="muted">(only for session scope)</span></span><select id="am-session"><option value="">No session — global long-term</option></select></label>
+      <label class="field"><span>Value</span><textarea id="am-value" rows="4" placeholder="Facts, preferences, project notes..."></textarea></label>
       <div class="row">
-        <button class="btn primary" id="m-save">Save memory</button>
-        <button class="btn" id="m-new">New</button>
+        <button class="btn primary" id="am-save">Save memory</button>
+        <button class="btn" id="am-new">New</button>
       </div>
-      <div id="memory-list"><p class="muted">No memories yet.</p></div>
-      <div class="note">These entries stay on this PC. Clients must include them explicitly (for example in a system prompt) to affect answers.</div>
+      <div class="note">Global + long-term is the default. Short-term memory is removed when its session is archived or deleted.</div>
+    </div>
+    <div class="card">
+      <h2>Long-term memory <small>used in chat prompts</small></h2>
+      <div class="memory-search-row">
+        <label class="field"><span>Search key or value</span><input id="am-search" type="search" placeholder="memory key or text"></label>
+        <button class="btn primary" id="am-refresh">Refresh</button>
+      </div>
+      <div id="agent-memory-list"><p class="muted">Loading...</p></div>
+      <div class="note">These entries are stored in the Lum agent database and can be injected into chat prompts by relevance. Forget removes one from future prompts.</div>
+    </div>
+  </section>
+
+  <section id="tab-console">
+    <div class="card">
+      <h2>Strata console <small id="con-state" style="font-weight:400;opacity:.65"></small></h2>
+      <div style="display:flex;gap:8px;margin:8px 0">
+        <button class="btn" id="c-start">Start</button>
+        <button class="btn" id="c-stop">Stop</button>
+        <button class="btn" id="c-clear">Clear</button>
+        <input id="c-cmd" placeholder="help · quit · start · lines 200" autocomplete="off" spellcheck="false"
+               style="flex:1;padding:8px 10px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--ink);font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:12.5px">
+        <button class="btn" id="c-run">Run</button>
+      </div>
+      <pre id="console-out" style="max-height:calc(100vh - 300px)">not attached — press Start to stream the process output here.</pre>
+      <pre id="c-out" style="display:none;max-height:120px;margin-top:8px;background:#0b0f14;color:#a9c1d6;border-color:#1d2a36"></pre>
     </div>
   </section>
 
   <section id="tab-logs">
     <div class="card">
-      <h2>Logs</h2>
+      <h2>Logs <small id="l-updated" style="font-weight:400;opacity:.65"></small></h2>
       <div class="three">
         <label class="field"><span>Source</span><select id="l-source">
-          <option value="server">server</option><option value="setup">setup</option><option value="engine">engine</option>
+          <option value="server" selected>server</option><option value="setup">setup</option><option value="engine">engine</option>
         </select></label>
         <label class="field"><span>Lines</span><input id="l-lines" type="number" min="1" max="500" value="120"></label>
         <label class="field"><span>&nbsp;</span><button class="btn" id="l-refresh">Refresh</button></label>
@@ -432,6 +698,15 @@ const ZH = {
   "Chats": "对话",
   "Sessions": "会话",
   "Memory": "记忆",
+  "Lum agent memory": "Lum Agent 记忆",
+  "used in chat prompts": "参与聊天提示词",
+  "Search key or value": "搜索 key 或内容",
+  "memory key or text": "记忆 key 或文本",
+  "Refresh": "刷新",
+  "These entries are stored in the Lum agent database and can be injected into chat prompts by relevance. Deleting one removes it from future prompts.": "这些条目存在 Lum agent 数据库里，会按相关性注入聊天提示词；删除后不会再参与后续对话。",
+  "No agent memories yet.": "还没有 Agent 记忆。",
+  "Delete this agent memory? It will stop being injected into chat prompts.": "删除这条 Agent 记忆？删除后它不会再注入聊天提示词。",
+  "Strata notes": "Strata 便签",
   "Logs": "日志",
   "This PC": "本机",
   "Running": "运行中",
@@ -463,7 +738,7 @@ const ZH = {
   "The local network (0.0.0.0)": "局域网 (0.0.0.0)",
   "API keys": "API 密钥",
   "Add a key": "添加密钥",
-  "(at least 16 characters; shown so you can check it)": "（至少 16 个字符；显示出来供你核对）",
+  "(any length; Generate makes a strong key)": "（任意长度；生成按钮会生成强密钥）",
   "Paste a new key": "粘贴新密钥",
   "Generate": "生成",
   "Add key": "添加密钥",
@@ -535,6 +810,7 @@ const ZH = {
   "Agent limits": "Agent 限制",
   "per task": "每个任务",
   "Max tool rounds": "最大工具轮数",
+  "Max task segments": "最大任务分段数",
   "Approval mode": "审批方式",
   "Allow all auto-approves writes, deletes, shell, and MCP calls. Use it only on a trusted machine.": "全部放行会自动批准写文件、删除、Shell 和 MCP 调用。只在可信电脑上使用。",
   "Raise max rounds when a task legitimately uses many tools; lower it to fail loops sooner. Default is 16.": "任务确实需要很多工具时提高轮数；想更早终止循环时降低。默认 16。",
@@ -554,6 +830,51 @@ const ZH = {
   "Allow network": "允许联网",
   "Shell runs in a throwaway container without root or a writable system disk. The workspace is mounted at /workspace; access scopes are mounted at /scopes/<name>. Allow network lets the container reach your LAN and the internet; keep it off unless the task needs it. Requires Docker Desktop + WSL2 (Windows) or Docker Engine.": "Shell 在一次性容器中运行，不使用 root，也没有可写的系统盘。工作目录挂载到 /workspace；访问目录挂载到 /scopes/<name>。允许联网会让容器访问局域网和互联网；除非任务需要，否则保持关闭。需要 Docker Desktop + WSL2（Windows）或 Docker Engine。",
   "Save sandbox": "保存沙盒",
+  "Host command allowlist": "主机命令白名单",
+  "exact commands that run outside Docker": "可绕过 Docker、在主机执行的命令",
+  "Commands": "命令",
+  "one per line; exact match; run from the workspace root": "一行一条；精确匹配；从工作区根目录执行",
+  "Only these exact command lines run on the host. Everything else stays in Docker. Shell approval still applies; do not add destructive commands.": "只有这些完整命令会在主机执行，其余仍在 Docker。Shell 审批仍然生效；不要加入破坏性命令。",
+  "Save allowlist": "保存白名单",
+  "Tool approval policy": "工具审批策略",
+  "Plugins saved.": "插件已保存。",
+  "Host commands saved.": "主机命令已保存。",
+  "Web fetch saved.": "Web fetch 已保存。",
+  "Agent limits saved.": "Agent 限制已保存。",
+  "Sandbox saved.": "沙盒已保存。",
+  "folders the agent may read or write": "Agent 可读写的目录",
+  "These are host folders or NAS shares. The agent uses the host path; Docker Shell sees them under": "这些是宿主机目录或 NAS 共享。Agent 使用宿主机路径；Docker Shell 中对应",
+  "Read-write": "读写",
+  "Read-only": "只读",
+  "read-write": "读写",
+  "read-only": "只读",
+  "folders": "目录",
+  "Keep scopes outside the workspace. The workspace itself is always read-write.": "请把 scope 放在工作区外；工作区本身始终可读写。",
+  "Permission": "权限",
+  "Browse": "浏览",
+  "Shell access": "Shell 访问",
+  "Search access": "搜索访问",
+  "File tools enforce this permission; writes still need approval.": "文件工具受此权限限制；写入仍需审批。",
+  "No session": "无会话",
+  "No session — global long-term": "无会话 — 全局长期",
+  "No session (global long-term)": "无会话（全局长期）",
+  "Global + long-term is the default. Short-term memory is removed when its session is archived or deleted.": "全局 + 长期是默认设置。短期记忆会在会话归档或删除时移除。",
+  "These entries are stored in the Lum agent database and can be injected into chat prompts by relevance. Forget removes one from future prompts.": "这些条目保存在 Lum Agent 数据库中，会按相关性注入对话提示。Forget 会将其从后续提示中移除。",
+  "No search API key saved.": "尚未保存搜索 API 密钥。",
+  "A search API key is saved; leave blank to keep it.": "已保存搜索 API 密钥；留空可保留。",
+  "Strata console": "Strata 控制台",
+  "idle": "空闲",
+  "Clear": "清空",
+  "Run": "运行",
+  "Loading...": "加载中...",
+  "No MCP config file. Set STRATA_AGENT_MCP_CONFIG or create lumWorkspace/mcp.json.": "没有 MCP 配置文件。请设置 STRATA_AGENT_MCP_CONFIG 或创建 lumWorkspace/mcp.json。",
+  "Config:": "配置：",
+  "Restart Strata after editing servers; OAuth servers show their tools only after authorization.": "修改服务器后请重启 Strata；OAuth 服务器只有在授权后才会显示工具。",
+  "Phone actions": "手机操作",
+  "Open apps or URLs, dial, and compose SMS on the Lum phone": "在 Lum 手机上打开应用或网页、拨号、编写短信",
+  "Ask the Lum phone app to open an app or URL, fill the dialer, or compose an SMS. The phone must be reachable and the Lum app running. Requires approval.": "让 Lum 手机打开应用或网页、填好拨号盘或短信草稿。手机需要在线且 Lum 正在运行；需要审批。",
+  "List launchable apps on the Lum phone. Requires approval.": "列出 Lum 手机上可启动的应用；需要审批。",
+  "Search the Lum phone's contacts by name or number. Requires approval and the Android contacts permission.": "按姓名或号码搜索 Lum 手机通讯录；需要审批和 Android 通讯录权限。",
   "Access permissions": "访问权限",
   "sandbox scopes": "沙盒目录",
   "These are host folders (Windows paths or NAS shares), not paths inside the sandbox. The model accesses them by host path; the Docker shell sees them at /scopes/<name>.": "这些是宿主机目录（Windows 路径或 NAS 共享），不是沙盒内部路径。模型通过宿主机路径访问，Docker Shell 中对应 /scopes/<name>。",
@@ -583,6 +904,35 @@ const ZH = {
   "None saved.": "没有保存的会话。",
   "Saving keeps the session's request list on this PC. It does not save the model's KV cache or a full transcript.": "保存只会把该会话的请求列表留在这台 PC，不会保存模型的 KV 缓存或完整对话记录。",
   "Long-term memory": "长期记忆",
+  "Session for quick scope changes": "快速切换 scope 使用的会话",
+  "Choose a session...": "选择会话...",
+  "Make global": "改为全局",
+  "Move to session": "移动到会话",
+  "used in chat prompts": "参与聊天提示词",
+  "Search key or value": "搜索 key 或内容",
+  "memory key or text": "记忆 key 或文本",
+  "Refresh": "刷新",
+  "Add memory": "添加记忆",
+  "default global + long-term": "默认全局 + 长期",
+  "Key": "键",
+  "Scope": "范围",
+  "Term": "期限",
+  "Global": "全局",
+  "Session": "会话",
+  "Rename": "重命名",
+  "Rename session": "重命名会话",
+  "Session name": "会话名称",
+  "Save name": "保存名称",
+  "Session renamed.": "会话名称已保存。",
+  "Session name is required.": "会话名称不能为空。",
+  "Cancel": "取消",
+  "Long-term": "长期",
+  "Short-term": "短期",
+  "Session ID": "会话 ID",
+  "(only for session scope)": "（仅 session 范围）",
+  "Value": "内容",
+  "Edit memory": "编辑记忆",
+  "update in place": "原地更新",
   "Title": "标题",
   "e.g. User preferences": "例如：用户偏好",
   "Tags": "标签",
@@ -612,7 +962,33 @@ const ZH = {
   "No conversations.": "还没有对话。",
   "No access scopes.": "没有访问目录。",
   "No messages.": "没有消息。",
-  "Saved.": "已保存。"
+  "Saved.": "已保存。",
+  "Web access": "网页访问",
+  "Fetch pages and search the web": "抓取网页并搜索互联网",
+  "Local files": "本地文件",
+  "List, read, search, and write inside the workspace": "在工作区内列出、读取、搜索和写入文件",
+  "Skills": "技能",
+  "Read instruction packs from the workspace's skills folder": "读取工作区 skills 文件夹中的说明包",
+  "Shell commands": "Shell 命令",
+  "Run commands with approval": "经批准后运行命令",
+  "Memory": "记忆",
+  "Remember and search durable facts": "保存并搜索长期事实",
+  "Schedules": "定时任务",
+  "Run a prompt later or on an interval": "稍后或按间隔运行提示词",
+  "Documents": "文档",
+  "Read PDF and DOCX files": "读取 PDF 和 DOCX 文件",
+  "Images": "图片",
+  "Describe or generate images": "描述或生成图片",
+  "Hand a coding task to the opencode CLI as a subprocess": "将编码任务交给 opencode CLI 子进程",
+  "MCP servers": "MCP 服务器",
+  "Tools from configured MCP servers": "来自已配置 MCP 服务器的工具",
+  "Notion and external tools": "Notion 与外部工具",
+  "View input schema": "查看接口参数",
+  "No tools in this plugin.": "此插件没有工具。",
+  "No MCP servers configured.": "尚未配置 MCP 服务器。",
+  "tools": "个工具",
+  "auto": "自动",
+  "ask": "每次询问",
 };
 
 function zhPattern(text) {
@@ -639,6 +1015,10 @@ function zhPattern(text) {
 
 function zhText(text) {
   return ZH[text] || zhPattern(text);
+}
+
+function tr(text) {
+  return LANG === "zh" ? (zhText(text) || text) : text;
 }
 
 function translateDom() {
@@ -787,6 +1167,38 @@ function renderOverview() {
        <div class="fact"><b>Download</b><span>${esc(rec.download_gb)} GB</span></div></div>
        ${(rec.notes || []).map((n) => `<div class="note">${esc(n)}</div>`).join("")}`
     : `<p class="muted">${esc(rec.why || "No recommendation.")}</p>`;
+}
+
+function renderImageModels() {
+  const data = S.image_models || {};
+  const models = data.models || [];
+  const comfy = data.comfyui || {};
+  const comfyTag = comfy.running
+    ? '<span class="tag ok">ComfyUI running</span>'
+    : '<span class="tag bad">ComfyUI stopped</span>';
+  if (!models.length) {
+    $("image-model-list").innerHTML =
+      `<p class="muted">No image models found in <code>${esc(data.directory || "?")}</code>.</p>`;
+    return;
+  }
+  $("image-model-list").innerHTML = models.map((m) => {
+    const variants = (m.variants || []).map((v) => `<div class="meta">
+      <span><b>${esc(v.label)}</b>${v.default ? ' <span class="tag">default</span>' : ""}</span>
+      <span>${esc(v.gb)} GB</span><span>${esc(v.file)}</span></div>`).join("");
+    const shared = (m.shared || []).map((v) => `<div class="meta">
+      <span>${esc(v.role)}</span><span>${esc(v.gb)} GB</span><span>${esc(v.file)}</span></div>`).join("");
+    const queue = comfy.queue == null ? "" : `<span>queue ${esc(comfy.queue)}</span>`;
+    return `<div class="model">
+      <div class="top"><span class="name">${esc(m.name)}</span>
+        ${m.ready ? '<span class="tag ok">ready</span>' : '<span class="tag bad">files missing</span>'}
+        ${comfyTag}<span class="tag">${esc(m.total_gb)} GB</span></div>
+      <div class="meta"><span>backend ComfyUI</span><span>${esc(comfy.url || "?")}</span>${queue}</div>
+      ${variants || '<p class="muted">No quantization files.</p>'}
+      ${shared}
+      <div class="row"><a class="btn" href="${esc(comfy.url || "#")}" target="_blank" rel="noopener">Open ComfyUI</a>
+        <span class="muted small">${esc(m.path)}</span></div>
+    </div>`;
+  }).join("");
 }
 
 function renderModels() {
@@ -974,11 +1386,219 @@ async function loadMemory() {
   }
 }
 
-function clearMemoryForm() {
-  memoryEditing = "";
-  $("m-title").value = "";
-  $("m-tags").value = "";
-  $("m-content").value = "";
+function sessionLabel(sessionId) {
+  const found = memorySessions.find((x) => x.id === sessionId);
+  return found ? (found.title || sessionId) : sessionId;
+}
+
+function memorySessionOptions(selected) {
+  const ids = new Set(memorySessions.map((x) => x.id));
+  if (selected) ids.add(selected);
+  return '<option value="">No session (global long-term)</option>' + [...ids].map((id) =>
+    `<option value="${esc(id)}"${id === selected ? " selected" : ""}>${esc(sessionLabel(id))}</option>`
+  ).join("");
+}
+
+function inlineMemoryEditor(m) {
+  const scope = m.scope || "global";
+  const sessionId = m.session_id || (scope.startsWith("session:") ? scope.slice("session:".length) : "");
+  const scopeMode = scope.startsWith("session:") ? "session" : "global";
+  const term = m.term === "short" ? "short" : "long";
+  return `<div class="inline-memory-edit" style="margin:10px 0 2px;padding:14px;border:1px solid var(--td-brand-color);border-radius:var(--td-radius-default);background:var(--td-bg-color-page)">
+    <div class="three">
+      <label class="field"><span>Key</span><input data-inline-key type="text" value="${esc(m.key || "")}"></label>
+      <label class="field"><span>Scope</span><select data-inline-scope><option value="global"${scopeMode === "global" ? " selected" : ""}>Global</option><option value="session"${scopeMode === "session" ? " selected" : ""}>Session</option></select></label>
+      <label class="field"><span>Term</span><select data-inline-term><option value="long"${term === "long" ? " selected" : ""}>Long-term</option><option value="short"${term === "short" ? " selected" : ""}>Short-term</option></select></label>
+    </div>
+    <label class="field"><span>Session <span class="muted">(only for session scope)</span></span><select data-inline-session>${memorySessionOptions(sessionId)}</select></label>
+    <label class="field"><span>Value</span><textarea data-inline-value rows="4">${esc(m.value || "")}</textarea></label>
+    <div class="row"><button class="btn primary" data-inline-save="${esc(m.id)}">Save</button>
+      <button class="btn" data-inline-cancel="${esc(m.id)}">Cancel</button></div>
+  </div>`;
+}
+
+function renderAgentMemory(items) {
+  const groups = new Map();
+  for (const item of items) {
+    const scope = item.scope || "global";
+    const key = scope.startsWith("session:") ? scope.slice("session:".length) : "";
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(item);
+  }
+  const order = ["", ...memorySessions.map((s) => s.id).filter((id) => groups.has(id))];
+  for (const key of groups.keys()) if (!order.includes(key)) order.push(key);
+  const html = order.filter((key) => groups.has(key)).map((key) => {
+    const label = key ? sessionLabel(key) : "Global";
+    const sub = key ? `<span class="muted small"> · ${esc(key.slice(0, 8))}</span>` : "";
+    const rows = groups.get(key).map((m) => {
+      const when = m.created_at ? new Date(m.created_at).toLocaleString() : "";
+      const term = m.term === "short" ? "short-term" : "long-term";
+      const origin = !key && m.session_id ? ` · from ${sessionLabel(m.session_id)}` : "";
+      const scopeButton = key
+        ? `<button class="btn" data-agent-memory-scope="${esc(m.id)}" data-agent-scope-target="global">Make global</button>`
+        : (m.session_id && memorySessions.some((s) => s.id === m.session_id)
+          ? `<button class="btn" data-agent-memory-scope="${esc(m.id)}" data-agent-scope-target="session" data-agent-session-id="${esc(m.session_id)}">Move to session</button>`
+          : "");
+      return `<div class="model">
+        <div class="top"><span class="name">${esc(m.key || "(untitled)")}</span><span class="tag">${term}</span></div>
+        <div class="meta"><span>${esc(when)}</span>${m.source ? `<span>${esc(m.source)}</span>` : ""}${origin ? `<span>${esc(origin)}</span>` : ""}</div>
+        <div class="note" style="white-space:pre-wrap">${esc(m.value || "")}</div>
+        <div class="row"><button class="btn" data-agent-memory-edit="${esc(m.id)}">Edit</button>
+          ${scopeButton}
+          <button class="btn danger" data-agent-memory-forget="${esc(m.id)}">Forget</button></div>
+        ${agentEditing === m.id ? inlineMemoryEditor(m) : ""}
+      </div>`;
+    }).join("");
+    return `<div style="margin:18px 0 6px"><h3 style="display:inline">${esc(label)}</h3>${sub}</div>${rows}`;
+  }).join("");
+  $("agent-memory-list").innerHTML = html || '<p class="muted">No memories yet.</p>';
+  document.querySelectorAll("[data-agent-memory-edit]").forEach((b) => {
+    b.addEventListener("click", () => {
+      const m = items.find((x) => x.id === b.dataset.agentMemoryEdit);
+      if (!m) return;
+      agentEditing = m.id;
+      renderAgentMemory(items);
+      const input = document.querySelector("[data-inline-key]");
+      if (input) input.focus();
+    });
+  });
+  document.querySelectorAll("[data-agent-memory-forget]").forEach((b) => {
+    b.addEventListener("click", async () => {
+      if (!confirm("Forget this memory? It will stop being injected into chat prompts.")) return;
+      b.disabled = true;
+      try {
+        await api("/api/agent/memory/delete", {method: "POST", body: JSON.stringify({id: b.dataset.agentMemoryForget})});
+        if (agentEditing === b.dataset.agentMemoryForget) agentEditing = "";
+        await loadAgentMemory();
+      } catch (e) {
+        b.disabled = false;
+        toast(e.message, true);
+      }
+    });
+  });
+  document.querySelectorAll("[data-agent-memory-scope]").forEach((b) => {
+    b.addEventListener("click", async () => {
+      const target = b.dataset.agentScopeTarget;
+      let scope = "global";
+      let term = "long";
+      if (target === "session") {
+        const sessionId = (b.dataset.agentSessionId || "").trim();
+        if (!sessionId) {
+          toast("This memory has no original session. Select one in Edit first.", true);
+          return;
+        }
+        scope = `session:${sessionId}`;
+        term = "long";
+      }
+      b.disabled = true;
+      try {
+        await api("/api/agent/memory/update", {method: "POST", body: JSON.stringify({
+          id: b.dataset.agentMemoryScope, scope, term
+        })});
+        await loadAgentMemory();
+        toast(target === "session" ? "Moved to session." : "Moved to global long-term.");
+      } catch (e) {
+        b.disabled = false;
+        toast(e.message, true);
+      }
+    });
+  });
+  document.querySelectorAll("[data-inline-save]").forEach((b) => {
+    b.addEventListener("click", async () => {
+      const editor = b.closest(".inline-memory-edit");
+      const key = (editor.querySelector("[data-inline-key]").value || "").trim();
+      const value = (editor.querySelector("[data-inline-value]").value || "").trim();
+      let scope = editor.querySelector("[data-inline-scope]").value;
+      const term = editor.querySelector("[data-inline-term]").value;
+      const sessionId = (editor.querySelector("[data-inline-session]").value || "").trim();
+      if (!key || !value) { toast("Key and value are required.", true); return; }
+      if (term === "short" && scope !== "session") scope = "session";
+      if (scope === "session" && !sessionId) { toast("Session is required for session scope.", true); return; }
+      b.disabled = true;
+      try {
+        await api("/api/agent/memory/update", {method: "POST", body: JSON.stringify({
+          id: b.dataset.inlineSave, key, value, term,
+          session_id: sessionId || null,
+          scope: scope === "session" ? `session:${sessionId}` : "global"
+        })});
+        agentEditing = "";
+        await loadAgentMemory();
+        toast("Memory saved.");
+      } catch (e) {
+        b.disabled = false;
+        toast(e.message, true);
+      }
+    });
+  });
+  document.querySelectorAll("[data-inline-cancel]").forEach((b) => {
+    b.addEventListener("click", () => {
+      agentEditing = "";
+      renderAgentMemory(items);
+    });
+  });
+}
+
+async function loadMemorySessions() {
+  try {
+    const result = await api("/api/agent/sessions");
+    memorySessions = (result.sessions || []).filter((s) => s && s.id);
+    const options = memorySessions.map((s) => `<option value="${esc(s.id)}">${esc(s.title || s.id)}</option>`).join("");
+    const select = $("am-session");
+    const current = select.value;
+    select.innerHTML = '<option value="">No session (global long-term)</option>' + options;
+    if ([...select.options].some((o) => o.value === current)) select.value = current;
+  } catch (e) {
+    // The session list is optional; the memory list still works.
+  }
+}
+
+function clearAgentForm() {
+  agentEditing = "";
+  $("am-key").value = "";
+  $("am-scope").value = "global";
+  $("am-term").value = "long";
+  $("am-session").value = "";
+  $("am-value").value = "";
+  $("am-form-title").innerHTML = 'Add memory <small>default global + long-term</small>';
+}
+
+async function saveAgentMemory() {
+  const key = ($("am-key").value || "").trim();
+  const value = ($("am-value").value || "").trim();
+  let scope = $("am-scope").value;
+  const term = $("am-term").value;
+  const sessionId = ($("am-session").value || "").trim();
+  if (!key || !value) { toast("Key and value are required.", true); return; }
+  if (term === "short" && scope !== "session") {
+    scope = "session";
+    $("am-scope").value = "session";
+  }
+  if (scope === "session" && !sessionId) {
+    toast("Session ID is required for session scope.", true);
+    return;
+  }
+  const body = {
+    key, value, term,
+    session_id: sessionId || null,
+    scope: scope === "session" ? `session:${sessionId}` : "global"
+  };
+  try {
+    await api("/api/agent/memory", {method: "POST", body: JSON.stringify(body)});
+    clearAgentForm();
+    await loadAgentMemory();
+    toast("Memory saved.");
+  } catch (e) { toast(e.message, true); }
+}
+
+async function loadAgentMemory() {
+  try {
+    await loadMemorySessions();
+    const q = ($("am-search").value || "").trim();
+    const suffix = q ? `?query=${encodeURIComponent(q)}` : "";
+    renderAgentMemory((await api("/api/agent/memory" + suffix)).memories || []);
+  } catch (e) {
+    $("agent-memory-list").innerHTML = `<p class="muted">${esc(e.message)}</p>`;
+  }
 }
 
 function fillInstall() {
@@ -1043,6 +1663,9 @@ async function loadNetwork() {
 
 let sessionsTimer = null;
 let memoryEditing = "";
+let agentEditing = "";
+let memorySessions = [];
+let renameSessionId = "";
 let configModels = "", cEditable = null;
 
 function renderConfigModels() {
@@ -1125,16 +1748,85 @@ function renderInstall() {
 
 function renderPlugins(data) {
   $("p-msg").textContent = data.port ? `Agent on port ${data.port}` : "";
+  const disabledTools = new Set(data.disabled_tools || []);
   $("p-list").innerHTML = (data.plugins || []).map((p) => {
-    const tools = (p.tools || []).length ? `Tools: ${p.tools.map(esc).join(", ")}` : "Configured MCP server tools";
-    return `<label class="plugin-row">
+    const details = p.tool_details || (p.tools || []).map((name) => ({
+      name, description: "", policy: "ask", parameters: {}, enabled: !disabledTools.has(name)
+    }));
+    const toolRow = (t) => `
+      <div class="tool-row">
+        <label><input type="checkbox" data-tool="${esc(t.name)}" ${t.enabled ? "checked" : ""}>
+          <b>${esc(t.name)}</b></label>
+        <select class="tag policy-select" data-policy="${esc(t.name)}" title="Tool approval policy">
+          <option value="auto"${t.policy === "auto" ? " selected" : ""}>${esc(tr("auto"))}</option>
+          <option value="ask"${t.policy !== "auto" ? " selected" : ""}>${esc(tr("ask"))}</option>
+        </select>
+        <div class="tool-detail">${esc(tr(t.description || ""))}
+          <details><summary>${esc(tr("View input schema"))}</summary>
+            <pre>${esc(JSON.stringify(t.parameters || {}, null, 2))}</pre>
+          </details>
+        </div>
+      </div>`;
+    let tools = "";
+    if (details.length && p.id === "mcp") {
+      const groups = new Map();
+      for (const t of details) {
+        const server = t.server || t.name.replace(/^mcp__/, "").split("__")[0] || "mcp";
+        if (!groups.has(server)) groups.set(server, []);
+        groups.get(server).push(t);
+      }
+      tools = [...groups].map(([server, items]) => `<details class="mcp-group">
+        <summary class="mcp-group-head"><span>${esc(server)}</span><span class="tag">${items.length} ${esc(tr("tools"))}</span></summary>
+        ${items.map(toolRow).join("")}</details>`).join("");
+    } else {
+      tools = details.length ? details.map(toolRow).join("") :
+        `<div class="small muted">${esc(tr("No tools in this plugin."))}</div>`;
+    }
+    const webSearchConfig = `<details class="plugin-config">
+      <summary>${esc(tr("Web search"))} <span class="muted">${esc(tr("used by the Web plugin"))}</span></summary>
+      <div class="three">
+        <label class="field"><span>${esc(tr("Provider"))}</span><select id="p-provider">
+          <option value="none">${esc(tr("none"))}</option>
+          <option value="searxng">searxng</option>
+          <option value="brave">brave</option>
+          <option value="bing">${esc(tr("bing (key optional)"))}</option>
+        </select></label>
+        <label class="field"><span>${esc(tr("SearXNG URL"))}</span><input id="p-url" type="text" placeholder="https://search.example"></label>
+        <label class="field"><span>${esc(tr("API key"))}</span><input id="p-key" type="password" placeholder="${esc(tr("leave blank to keep"))}"></label>
+      </div>
+      <label class="small"><input type="checkbox" id="p-clear"> ${esc(tr("clear the saved search key"))}</label>
+      <div class="row"><button class="btn primary" id="p-save">${esc(tr("Save plugins"))}</button>
+        <span class="muted small" id="p-status"></span></div>
+    </details>`;
+    const mcpConfig = `<details class="plugin-config">
+      <summary>${esc(tr("MCP servers"))} <span class="muted">${esc(tr("Notion and external tools"))}</span></summary>
+      <div id="p-mcp-list"><p class="muted">${esc(tr("Checking..."))}</p></div>
+      <div class="note" id="p-mcp-note">${esc(tr("MCP tools are loaded when Strata starts. After OAuth or token setup, the tools appear in the plugin list above."))}</div>
+    </details>`;
+    return `<div class="plugin-row">
       <input type="checkbox" data-plugin="${esc(p.id)}" ${p.enabled ? "checked" : ""}>
-      <span><b>${esc(p.label)}</b>
-        <div class="small muted">${esc(p.description)}</div>
-        <div class="plugin-tools">${tools}</div>
+      <span style="flex:1 1 100%">
+        <details class="plugin-fold">
+          <summary><b>${esc(p.label)}</b> <span class="muted small">${esc(tr(p.description))}</span></summary>
+          <div class="plugin-tools">${tools}</div>
+          ${p.id === "web" ? webSearchConfig : ""}
+          ${p.id === "mcp" ? mcpConfig : ""}
+        </details>
       </span>
-    </label>`;
+    </div>`;
   }).join("");
+  const mcp = data.mcp || {};
+  const mcpServers = mcp.servers || [];
+  $("p-mcp-list").innerHTML = mcpServers.length ? mcpServers.map((server) => `
+    <div class="tool-row">
+      <b>${esc(server.name)}</b>
+      <span class="tag">${esc(server.transport || "stdio")}</span>
+      <span class="small muted">${esc(server.url || server.command || "")}</span>
+      ${server.env_keys && server.env_keys.length ? `<span class="small muted">env: ${esc(server.env_keys.join(", "))}</span>` : ""}
+    </div>`).join("") : '<p class="muted">No MCP servers configured.</p>';
+  $("p-mcp-note").textContent = mcp.config_path
+    ? `${tr("Config:")} ${mcp.config_path}. ${tr("Restart Strata after editing servers; OAuth servers show their tools only after authorization.")}`
+    : tr("No MCP config file. Set STRATA_AGENT_MCP_CONFIG or create lumWorkspace/mcp.json.");
   const web = data.web || {};
   $("p-provider").value = web.provider || "none";
   $("p-url").value = web.url || "";
@@ -1143,6 +1835,7 @@ function renderPlugins(data) {
   $("p-allow-fake").checked = web.allow_fake_ip !== false;
   $("p-fake-nets").value = (web.fake_ip_networks || []).join("\n");
   $("p-rounds").value = (data.agent && data.agent.max_tool_rounds) || 16;
+  $("p-segments").value = (data.agent && data.agent.max_task_segments) || 4;
   $("p-approval").value = (data.agent && data.agent.approval_mode) || "ask";
   const sandbox = data.sandbox || {};
   $("p-sandbox-mode").value = sandbox.mode || "off";
@@ -1150,13 +1843,13 @@ function renderPlugins(data) {
   $("p-sandbox-memory").value = sandbox.memory_mb || 2048;
   $("p-sandbox-cpus").value = sandbox.cpus || 2;
   $("p-sandbox-network").checked = !!sandbox.network;
+  $("p-host-commands").value = (data.host_commands || []).join("\n");
   const workspace = Array.isArray(data.workspace) ? data.workspace.join(", ") : (data.workspace || "");
   $("p-sandbox-workspace").textContent = workspace
     ? `${LANG === "zh" ? "工作区" : "Workspace"}${LANG === "zh" ? "：" : ": "}${workspace}`
     : "";
   $("p-status").textContent = web.api_key_set ? "A search API key is saved; leave blank to keep it." : "No search API key saved.";
 }
-
 async function loadPlugins() {
   try {
     renderPlugins(await api("/api/plugins"));
@@ -1166,9 +1859,106 @@ async function loadPlugins() {
   }
 }
 
+async function loadWebFetch() {
+  try {
+    const data = await api("/api/plugins");
+    const web = data.web || {};
+    $("p-allow-fake").checked = web.allow_fake_ip !== false;
+    $("p-fake-nets").value = (web.fake_ip_networks || []).join("\n");
+  } catch (_) {
+    // Keep the form empty; saving will surface the error.
+  }
+}
+
+async function saveAgentLimits() {
+  const agent = {
+    max_tool_rounds: +$("p-rounds").value,
+    max_task_segments: +$("p-segments").value,
+    approval_mode: $("p-approval").value
+  };
+  try {
+    const data = await api("/api/plugins", {
+      method: "POST",
+      body: JSON.stringify({agent})
+    });
+    $("p-rounds").value = (data.agent && data.agent.max_tool_rounds) || 16;
+    $("p-segments").value = (data.agent && data.agent.max_task_segments) || 4;
+    $("p-approval").value = (data.agent && data.agent.approval_mode) || "ask";
+    toast("Agent limits saved.");
+  } catch (e) {
+    toast(e.message, true);
+  }
+}
+
+async function saveSandbox() {
+  const sandbox = {
+    mode: $("p-sandbox-mode").value,
+    image: $("p-sandbox-image").value.trim(),
+    memory_mb: +$("p-sandbox-memory").value,
+    cpus: +$("p-sandbox-cpus").value,
+    network: $("p-sandbox-network").checked
+  };
+  try {
+    const data = await api("/api/plugins", {
+      method: "POST",
+      body: JSON.stringify({sandbox})
+    });
+    const saved = data.sandbox || {};
+    $("p-sandbox-mode").value = saved.mode || "off";
+    $("p-sandbox-image").value = saved.image || "debian:bookworm-slim";
+    $("p-sandbox-memory").value = saved.memory_mb || 2048;
+    $("p-sandbox-cpus").value = saved.cpus || 2;
+    $("p-sandbox-network").checked = !!saved.network;
+    toast("Sandbox saved.");
+  } catch (e) {
+    toast(e.message, true);
+  }
+}
+
+async function saveHostCommands() {
+  const commands = $("p-host-commands").value
+    .split("\n").map((line) => line.trim()).filter(Boolean);
+  try {
+    const data = await api("/api/plugins", {
+      method: "POST",
+      body: JSON.stringify({host_commands: commands})
+    });
+    $("p-host-commands").value = (data.host_commands || []).join("\n");
+    toast("Host commands saved.");
+  } catch (e) {
+    toast(e.message, true);
+  }
+}
+
+async function saveWebFetch() {
+  const web = {
+    allow_fake_ip: $("p-allow-fake").checked,
+    fake_ip_networks: $("p-fake-nets").value
+      .split(/[\s,]+/).map((item) => item.trim()).filter(Boolean)
+  };
+  try {
+    const data = await api("/api/plugins", {
+      method: "POST",
+      body: JSON.stringify({web})
+    });
+    const saved = data.web || {};
+    $("p-allow-fake").checked = saved.allow_fake_ip !== false;
+    $("p-fake-nets").value = (saved.fake_ip_networks || []).join("\n");
+    toast("Web fetch saved.");
+  } catch (e) {
+    toast(e.message, true);
+  }
+}
+
 async function savePlugins() {
   const disabled = [...document.querySelectorAll("#p-list input[data-plugin]")]
     .filter((cb) => !cb.checked).map((cb) => cb.dataset.plugin);
+  const disabledTools = [...document.querySelectorAll("#p-list input[data-tool]")]
+    .filter((cb) => !cb.checked).map((cb) => cb.dataset.tool);
+  const toolPolicies = {};
+  document.querySelectorAll("#p-list select[data-policy]").forEach((select) => {
+    toolPolicies[select.dataset.policy] = select.value;
+  });
   const web = {
     provider: $("p-provider").value,
     url: $("p-url").value,
@@ -1180,6 +1970,7 @@ async function savePlugins() {
   if (key) web.api_key = key;
   const agent = {
     max_tool_rounds: +$("p-rounds").value,
+    max_task_segments: +$("p-segments").value,
     approval_mode: $("p-approval").value
   };
   const sandbox = {
@@ -1189,33 +1980,60 @@ async function savePlugins() {
     cpus: +$("p-sandbox-cpus").value,
     network: $("p-sandbox-network").checked
   };
+  const hostCommands = $("p-host-commands").value.split("\n").map((line) => line.trim()).filter(Boolean);
   try {
-    renderPlugins(await api("/api/plugins", {method: "POST", body: JSON.stringify({disabled, web, agent, sandbox})}));
+    renderPlugins(await api("/api/plugins", {method: "POST", body: JSON.stringify({disabled, disabled_tools: disabledTools, tool_policies: toolPolicies, web, agent, sandbox, host_commands: hostCommands})}));
     toast("Plugins saved.");
   } catch (e) { toast(e.message, true); }
 }
 
 function renderScopes(scopes) {
-  $("scope-list").innerHTML = (scopes || []).map((scope, index) => `
-    <div class="scope-row" data-scope-row>
-      <label class="field"><span>Label</span><input data-field="label" value="${esc(scope.label || "")}"></label>
-      <label class="field"><span>Host folder</span>
-        <span style="display:flex;gap:6px;align-items:center">
-          <input data-field="source" value="${esc(scope.source || "")}" style="min-width:0;flex:1">
-          <button class="btn" type="button" data-scope-browse="${index}">Browse…</button>
-        </span>
-      </label>
-      <button class="btn danger scope-remove" data-scope-remove="${index}">删除</button>
-      <div class="scope-options">
-        <label class="field"><span>Mode</span><select data-field="mode">
-          <option value="ro"${scope.mode === "ro" ? " selected" : ""}>Read-only（只读）</option>
-          <option value="rw"${scope.mode === "rw" ? " selected" : ""}>Read-write（读写）</option>
-        </select></label>
-        <label class="small"><input type="checkbox" data-field="shell"${scope.shell !== false ? " checked" : ""}> Shell</label>
-        <label class="small"><input type="checkbox" data-field="search"${scope.search !== false ? " checked" : ""}> Search</label>
-        <span class="small muted">模型访问：${esc(scope.container || "/scopes/<label>")} · 这是宿主机目录</span>
+  const items = scopes || [];
+  const writable = items.filter((scope) => scope.mode === "rw").length;
+  $("scope-summary").innerHTML = `
+    <div><b>${items.length}</b><span>folders</span></div>
+    <div><b>${items.length - writable}</b><span>read-only</span></div>
+    <div><b>${writable}</b><span>read-write</span></div>`;
+  $("scope-list").innerHTML = items.length ? items.map((scope, index) => `
+    <div class="scope-card" data-scope-row>
+      <div class="scope-card__head">
+        <div class="scope-card__identity">
+          <span class="scope-mode-mark ${scope.mode === "rw" ? "is-rw" : ""}">${scope.mode === "rw" ? "RW" : "RO"}</span>
+          <div class="scope-card__name">
+            <input data-field="label" value="${esc(scope.label || "")}" placeholder="Folder name" aria-label="Folder name">
+            <span class="muted small">${esc(scope.container || "/scopes/<name>")}</span>
+          </div>
+        </div>
+        <div class="scope-card__side">
+          <span class="tag ${scope.mode === "rw" ? "warn" : ""}">${scope.mode === "rw" ? "Read-write" : "Read-only"}</span>
+          <button class="btn danger" data-scope-remove="${index}">Remove</button>
+        </div>
       </div>
-    </div>`).join("") || '<p class="muted">No access scopes.</p>';
+      <div class="scope-card__grid">
+        <label class="field"><span>Host folder</span>
+          <span class="scope-source-row">
+            <input data-field="source" data-scope-pick="${index}" value="${esc(scope.source || "")}" placeholder="Click to choose a folder" readonly title="Click to choose a folder">
+            <button class="btn" type="button" data-scope-browse="${index}">Browse</button>
+          </span>
+        </label>
+        <label class="field"><span>Permission</span><select data-field="mode">
+          <option value="ro"${scope.mode === "ro" ? " selected" : ""}>Read-only</option>
+          <option value="rw"${scope.mode === "rw" ? " selected" : ""}>Read-write</option>
+        </select></label>
+      </div>
+      <div class="scope-card__options">
+        <label class="scope-toggle"><input type="checkbox" data-field="shell"${scope.shell !== false ? " checked" : ""}> <span>Shell access</span></label>
+        <label class="scope-toggle"><input type="checkbox" data-field="search"${scope.search !== false ? " checked" : ""}> <span>Search access</span></label>
+        <span class="muted small">File tools enforce this permission; writes still need approval.</span>
+      </div>
+    </div>`).join("") : `
+    <div class="card scope-empty">
+      <b>No access folders yet</b>
+      <p class="muted">Add a folder when the agent needs files outside the workspace.</p>
+      <button class="btn primary" id="scope-empty-add">Add your first folder</button>
+    </div>`;
+  const emptyAdd = $("scope-empty-add");
+  if (emptyAdd) emptyAdd.addEventListener("click", () => $("scope-add").click());
 }
 
 function readScopesRaw() {
@@ -1241,6 +2059,18 @@ async function loadAccess() {
     const data = await api("/api/plugins");
     renderScopes(data.scopes || []);
     $("scope-msg").textContent = `${(data.scopes || []).length} scopes`;
+    $("p-rounds").value = (data.agent && data.agent.max_tool_rounds) || 16;
+    $("p-segments").value = (data.agent && data.agent.max_task_segments) || 4;
+    $("p-approval").value = (data.agent && data.agent.approval_mode) || "ask";
+    const sandbox = data.sandbox || {};
+    $("p-sandbox-mode").value = sandbox.mode || "off";
+    $("p-sandbox-image").value = sandbox.image || "debian:bookworm-slim";
+    $("p-sandbox-memory").value = sandbox.memory_mb || 2048;
+    $("p-sandbox-cpus").value = sandbox.cpus || 2;
+    $("p-sandbox-network").checked = !!sandbox.network;
+    $("p-host-commands").value = (data.host_commands || []).join("\n");
+    const workspace = Array.isArray(data.workspace) ? data.workspace.join(", ") : (data.workspace || "");
+    $("p-sandbox-workspace").textContent = workspace ? `${LANG === "zh" ? "工作区" : "Workspace"}${LANG === "zh" ? "：" : ": "}${workspace}` : "";
   } catch (e) {
     $("scope-list").innerHTML = `<p class="muted">${esc(e.message)}</p>`;
     $("scope-msg").textContent = "";
@@ -1334,6 +2164,7 @@ async function loadChats() {
           <b>${esc(s.title || "Untitled")}</b>
           <span class="small muted">${esc(s.updated_at || "")}</span>
         </button>
+        <button class="btn" data-chat-rename="${esc(s.id)}" data-chat-title="${esc(s.title || "")}">Rename</button>
         <button class="btn danger" data-chat-delete="${esc(s.id)}">Delete</button>
       </div>`).join("") : '<p class="muted">No conversations.</p>';
   } catch (e) {
@@ -1350,8 +2181,12 @@ function parseChatContent(content) {
     if (text.startsWith('[[lum-attachment:') && text.endsWith(']]')) {
       try {
         const item = JSON.parse(text.slice('[[lum-attachment:'.length, -2));
-        if (String(item.mime || "").startsWith("image/") && item.path) {
-          images.push({alt: item.name || "image", path: item.path});
+        const mime = String(item.mime || "");
+        const imagePath = String(item.path || "");
+        const isImage = mime.startsWith("image/") || String(item.type || "").toLowerCase() === "image"
+          || /\.(png|jpe?g|gif|webp|bmp|heic)$/i.test(imagePath);
+        if (isImage && imagePath) {
+          images.push({alt: item.name || "image", path: imagePath});
         } else if (item.name) {
           kept.push(`[file] ${item.name}`);
         }
@@ -1418,6 +2253,7 @@ function render() {
   if (!S) return;
   renderOverview();
   renderModels();
+  renderImageModels();
   fillInstall();
   renderNetworkModels();
   renderConfigModels();
@@ -1428,18 +2264,27 @@ document.querySelectorAll("nav button").forEach((b) => b.addEventListener("click
   document.querySelectorAll("nav button").forEach((x) => x.classList.toggle("active", x === b));
   tab = b.dataset.tab;
   document.querySelectorAll("section").forEach((s) => s.classList.toggle("active", s.id === "tab-" + tab));
-  if (tab === "network") loadNetwork();
+  if (tab === "network") { loadNetwork(); loadWebFetch(); }
   if (sessionsTimer) { clearInterval(sessionsTimer); sessionsTimer = null; }
   if (tab === "config") loadModelConfig();
   if (tab === "plugins") loadPlugins();
   if (tab === "access") loadAccess();
   if (tab === "chats") loadChats();
   if (tab === "sessions") { loadSessions(); sessionsTimer = setInterval(loadSessions, 1500); }
-  if (tab === "memory") loadMemory();
+  if (tab === "memory") loadAgentMemory();
+  if (tab === "console") refreshConsole();
   if (tab === "logs") refreshLogs();
 }));
 
 document.addEventListener("click", async (e) => {
+  const renameChat = e.target.closest && e.target.closest("[data-chat-rename]");
+  if (renameChat) {
+    renameSessionId = renameChat.dataset.chatRename;
+    $("rename-title").value = renameChat.dataset.chatTitle || "";
+    $("rename-modal").hidden = false;
+    $("rename-title").focus();
+    return;
+  }
   const delChat = e.target.closest && e.target.closest("[data-chat-delete]");
   if (delChat) {
     if (!confirm("Delete this conversation? Its messages, versions, and task records are removed; this cannot be undone.")) return;
@@ -1613,18 +2458,51 @@ async function refreshLogs() {
   try {
     const q = `?source=${encodeURIComponent($("l-source").value)}&lines=${encodeURIComponent($("l-lines").value)}`;
     const r = await api("/api/logs" + q);
-    $("log").textContent = (r.lines || []).join("\n") || "(empty)";
+    const box = $("log");
+    const atBottom = box.scrollTop + box.clientHeight >= box.scrollHeight - 4;
+    box.textContent = (r.lines || []).join("\n") || "(empty)";
+    if (atBottom) box.scrollTop = box.scrollHeight;
+    const stamp = $("l-updated");
+    if (stamp) {
+      const name = (r.log || "").split(/[\\/]/).pop();
+      stamp.textContent = `· ${new Date().toLocaleTimeString()} · ${(r.lines || []).length} lines · ${name}`;
+    }
   } catch (e) { $("log").textContent = e.message; }
 }
-$("p-save").addEventListener("click", savePlugins);
-$("p-fetch-save").addEventListener("click", savePlugins);
-$("p-limits-save").addEventListener("click", savePlugins);
-$("p-sandbox-save").addEventListener("click", savePlugins);
+document.addEventListener("click", (event) => {
+  if (event.target.closest("#p-save")) {
+    event.preventDefault();
+    savePlugins();
+  }
+});
+$("p-fetch-save").addEventListener("click", saveWebFetch);
+$("p-limits-save").addEventListener("click", saveAgentLimits);
+$("p-sandbox-save").addEventListener("click", saveSandbox);
+$("p-host-save").addEventListener("click", saveHostCommands);
 $("scope-save").addEventListener("click", saveAccess);
 $("scope-add").addEventListener("click", () => {
   renderScopes([...readScopes(), {label: "", source: "", mode: "ro", shell: true, search: true}]);
 });
 $("ch-refresh").addEventListener("click", loadChats);
+$("rename-cancel").addEventListener("click", () => { $("rename-modal").hidden = true; });
+$("rename-save").addEventListener("click", async () => {
+  const title = ($("rename-title").value || "").trim();
+  if (!renameSessionId || !title) {
+    toast("Session name is required.", true);
+    return;
+  }
+  try {
+    await api("/api/agent/session/rename", {method: "POST", body: JSON.stringify({id: renameSessionId, title})});
+    $("rename-modal").hidden = true;
+    renameSessionId = "";
+    await loadChats();
+    toast("Session renamed.");
+  } catch (e) { toast(e.message, true); }
+});
+$("rename-title").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") { e.preventDefault(); $("rename-save").click(); }
+  if (e.key === "Escape") $("rename-modal").hidden = true;
+});
 $("folder-up").addEventListener("click", () => {
   const parent = $("folder-up").dataset.parent;
   if (parent) loadFolder(parent);
@@ -1641,7 +2519,12 @@ $("folder-select").addEventListener("click", () => {
   closeFolderPicker();
 });
 $("folder-close").addEventListener("click", closeFolderPicker);
-document.addEventListener("click", (e) => {
+document.addEventListener("click", async (e) => {
+  const pickScope = e.target.closest && e.target.closest("[data-scope-pick]");
+  if (pickScope) {
+    await openFolderPicker(+pickScope.dataset.scopePick);
+    return;
+  }
   const browse = e.target.closest && e.target.closest("[data-scope-browse]");
   if (browse) {
     openFolderPicker(+browse.dataset.scopeBrowse);
@@ -1659,6 +2542,86 @@ document.addEventListener("click", (e) => {
   renderScopes(rows);
 });
 $("l-refresh").addEventListener("click", refreshLogs);
+$("l-source").addEventListener("change", refreshLogs);
+let conSeq = 0;
+async function refreshConsole() {
+  const box = $("console-out");
+  if (!box) return;
+  try {
+    const r = await api("/api/console?since=" + conSeq);
+    if (r.seq < conSeq) { box.textContent = ""; conSeq = 0; }
+    if (r.lines && r.lines.length) {
+      const atBottom = box.scrollTop + box.clientHeight >= box.scrollHeight - 4;
+      if (box.dataset.fresh === "1") { box.textContent = ""; box.dataset.fresh = "0"; }
+      box.textContent += r.lines.join("\n") + "\n";
+      if (atBottom) box.scrollTop = box.scrollHeight;
+    }
+    conSeq = r.seq;
+    $("con-state").textContent = r.attached ? "· live" : "· idle";
+  } catch (e) { $("con-state").textContent = "· " + e.message; }
+}
+setInterval(() => {
+  const b = $("console-out");
+  if (b && b.offsetParent !== null && document.visibilityState === "visible") refreshConsole();
+}, 1000);
+refreshConsole();
+
+async function headless(action) {
+  const out = $("c-out");
+  out.style.display = "block";
+  const line = (t) => { out.textContent += t + "\n"; out.scrollTop = out.scrollHeight; };
+  line("> " + action);
+  try {
+    if (action === "start") { $("console-out").dataset.fresh = "1"; conSeq = 0; }
+    const r = await api("/api/headless", {method: "POST", body: JSON.stringify({action})});
+    line(r.summary || JSON.stringify(r));
+  } catch (e) { line("error: " + e.message); }
+}
+$("c-start").addEventListener("click", () => headless("start"));
+$("c-stop").addEventListener("click", () => headless("stop"));
+$("c-clear").addEventListener("click", () => { $("console-out").textContent = ""; });
+
+async function runConsole() {
+  const input = $("c-cmd");
+  const raw = input.value.trim();
+  if (!raw) return;
+  input.value = "";
+  const out = $("c-out");
+  out.style.display = "block";
+  const line = (t) => { out.textContent += t + "\n"; out.scrollTop = out.scrollHeight; };
+  line("> " + raw);
+  const [cmd, ...rest] = raw.split(/\s+/);
+  try {
+    if (cmd === "quit" || cmd === "exit" || cmd === "stop") {
+      const r = await api("/api/headless", {method: "POST", body: JSON.stringify({action: "stop"})});
+      line(r.summary || JSON.stringify(r));
+    } else if (cmd === "start") {
+      const r = await api("/api/headless", {method: "POST", body: JSON.stringify({action: "start"})});
+      line(r.summary || JSON.stringify(r));
+    } else if (cmd === "lines") {
+      $("l-lines").value = rest[0] || 120;
+      await refreshLogs();
+      line("lines = " + $("l-lines").value);
+    } else if (cmd === "clear") {
+      out.textContent = "";
+    } else if (cmd === "help") {
+      line("quit | stop   stop the model server");
+      line("start          start it again");
+      line("lines <n>      how many lines the panel shows");
+      line("clear          clear this output");
+    } else {
+      line("unknown command: " + cmd + " (try help)");
+    }
+  } catch (e) { line("error: " + e.message); }
+}
+$("c-run").addEventListener("click", runConsole);
+$("c-cmd").addEventListener("keydown", (e) => { if (e.key === "Enter") runConsole(); });
+// Keep the panel live while it is on screen; skip the hidden tabs and background tabs.
+setInterval(() => {
+  const box = $("log");
+  if (box && box.offsetParent !== null && document.visibilityState === "visible") refreshLogs();
+}, 3000);
+refreshLogs();
 
 $("s-refresh").addEventListener("click", loadSessions);
 $("s-clear").addEventListener("click", async () => {
@@ -1667,17 +2630,55 @@ $("s-clear").addEventListener("click", async () => {
     await loadSessions();
   } catch (e) { toast(e.message, true); }
 });
-$("m-save").addEventListener("click", async () => {
-  const body = {title: $("m-title").value, tags: $("m-tags").value, content: $("m-content").value};
-  if (memoryEditing) body.id = memoryEditing;
-  try {
-    await api("/api/memory", {method: "POST", body: JSON.stringify(body)});
-    clearMemoryForm();
-    await loadMemory();
-    toast("Memory saved.");
-  } catch (e) { toast(e.message, true); }
+$("am-save").addEventListener("click", saveAgentMemory);
+$("am-new").addEventListener("click", clearAgentForm);
+$("am-refresh").addEventListener("click", loadAgentMemory);
+$("am-search").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") {
+    e.preventDefault();
+    loadAgentMemory();
+  }
 });
-$("m-new").addEventListener("click", clearMemoryForm);
+
+let tdButtonFrame = 0;
+function applyTDesignButtons() {
+  tdButtonFrame = 0;
+  document.querySelectorAll(".btn").forEach((button) => {
+    if (button.classList.contains("t-button")) return;
+    button.classList.add("t-button", "t-size-m");
+    if (button.classList.contains("primary")) {
+      button.classList.add("t-button--theme-primary", "t-button--variant-base");
+    } else if (button.classList.contains("danger")) {
+      button.classList.add("t-button--theme-danger", "t-button--variant-outline");
+    } else {
+      button.classList.add("t-button--variant-outline");
+    }
+  });
+}
+function scheduleTDesignButtons() {
+  if (!tdButtonFrame) tdButtonFrame = requestAnimationFrame(applyTDesignButtons);
+}
+new MutationObserver(scheduleTDesignButtons).observe(document.body, {childList: true, subtree: true});
+scheduleTDesignButtons();
+
+document.querySelectorAll("#tab-plugins .card > h2, #tab-access .card > h2").forEach((heading) => {
+  heading.setAttribute("role", "button");
+  heading.setAttribute("tabindex", "0");
+  heading.setAttribute("aria-expanded", "true");
+  const toggle = () => {
+    const card = heading.parentElement;
+    if (!card) return;
+    card.classList.toggle("collapsed");
+    heading.setAttribute("aria-expanded", card.classList.contains("collapsed") ? "false" : "true");
+  };
+  heading.addEventListener("click", toggle);
+  heading.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      toggle();
+    }
+  });
+});
 
 applyLanguage();
 $("lang").addEventListener("change", () => {
@@ -1686,6 +2687,14 @@ $("lang").addEventListener("change", () => {
 });
 
 refresh(true);
+const initialParams = new URLSearchParams(location.search);
+const initialTab = initialParams.get("tab");
+const initialEdit = initialParams.get("edit");
+if (initialEdit) agentEditing = initialEdit;
+if (initialTab) {
+  const target = document.querySelector(`nav button[data-tab="${CSS.escape(initialTab)}"]`);
+  if (target) target.click();
+}
 setInterval(() => { if (!document.hidden) refresh(); }, 5000);
 </script>
 </body>
