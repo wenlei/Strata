@@ -783,6 +783,50 @@ class App:
                 raise
             return self._save_local_plugins(body)
 
+    def schedules(self) -> dict:
+        port, key = self._agent_target()
+        status, body = mcp.http_json(
+            f"http://127.0.0.1:{port}/v1/agent/schedules",
+            api_key=key, timeout=5,
+        )
+        if status != 200 or not isinstance(body, dict):
+            raise ValueError(f"cannot read schedules from port {port} (HTTP {status})")
+        body["port"] = port
+        return body
+
+    def create_schedule(self, body: dict) -> dict:
+        content = str(body.get("content") or "").strip()
+        if not content:
+            raise ValueError("content is required")
+        payload: dict = {"content": content}
+        for field in ("delay_s", "interval_s", "run_at", "session_id"):
+            value = body.get(field)
+            if value not in (None, ""):
+                payload[field] = value
+        port, key = self._agent_target()
+        status, result = mcp.http_json(
+            f"http://127.0.0.1:{port}/v1/agent/schedules",
+            method="POST", body=payload, api_key=key, timeout=10,
+        )
+        if status != 200 or not isinstance(result, dict):
+            raise ValueError(f"cannot create schedule (HTTP {status})")
+        result["port"] = port
+        return result
+
+    def delete_schedule(self, schedule_id: str) -> dict:
+        schedule_id = str(schedule_id or "").strip()
+        if not schedule_id:
+            raise ValueError("schedule id is required")
+        port, key = self._agent_target()
+        encoded = urllib.parse.quote(schedule_id, safe="")
+        status, result = mcp.http_json(
+            f"http://127.0.0.1:{port}/v1/agent/schedules/{encoded}",
+            method="DELETE", api_key=key, timeout=10,
+        )
+        if status not in (200, 404):
+            raise ValueError(f"cannot delete schedule (HTTP {status})")
+        return {"deleted": schedule_id}
+
     def agent_sessions(self) -> dict:
         port, key = self._agent_target()
         status, body = mcp.http_json(
@@ -1205,6 +1249,8 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(200, self._app().tasks())
             elif path == "/api/plugins":
                 self._json(200, self._app().plugins())
+            elif path == "/api/schedules":
+                self._json(200, self._app().schedules())
             elif path == "/api/agent/sessions":
                 self._json(200, self._app().agent_sessions())
             elif path == "/api/agent/session":
@@ -1261,6 +1307,10 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(200, self._app().clear_tasks())
             elif path == "/api/plugins":
                 self._json(200, self._app().save_plugins(body))
+            elif path == "/api/schedules":
+                self._json(200, self._app().create_schedule(body))
+            elif path == "/api/schedules/delete":
+                self._json(200, self._app().delete_schedule(body.get("id", "")))
             elif path == "/api/agent/session/rename":
                 self._json(200, self._app().rename_agent_session(
                     body.get("id", ""), body.get("title", "")

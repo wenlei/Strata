@@ -41,6 +41,7 @@ section{display:none} section.active{display:block}
 .fact{border:1px solid var(--line);border-radius:10px;padding:10px 12px;background:color-mix(in srgb,var(--bg) 55%,var(--card))}
 .fact b{display:block;font-size:12px;color:var(--muted);font-weight:500;margin-bottom:2px}
 .fact span{font-size:14px;overflow-wrap:anywhere}
+.endpoint-row{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;align-items:start}
 .muted{color:var(--muted)} .small{font-size:12.5px}
 code,pre{font-family:ui-monospace,SFMono-Regular,Consolas,"Liberation Mono",monospace;font-size:12.5px}
 .key-full{word-break:break-all}
@@ -240,6 +241,12 @@ pre{background:var(--td-bg-color-page);border-color:var(--td-border-level-1-colo
 .ref-row{padding:8px 14px;border-bottom:1px solid var(--td-border-level-1-color)}
 .ref-row:last-child{border-bottom:0}
 .ref-row input{height:30px;font-size:13px}
+.ref-name-wrap{position:relative;display:block;min-width:0}
+.ref-name-wrap input{width:100%;padding-right:34px}
+.ref-copy-icon{position:absolute;right:4px;top:50%;transform:translateY(-50%);display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;padding:0;border:0;border-radius:6px;background:transparent;color:var(--td-text-color-secondary);cursor:pointer}
+.ref-copy-icon:hover{background:var(--td-bg-color-page);color:var(--td-brand-color)}
+.ref-copy-icon:disabled{opacity:.35;cursor:default}
+.ref-copy-icon svg{display:block;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
 .ref-remove{min-width:64px}
 .scope-list{background:var(--td-bg-color-container);border:1px solid var(--td-border-level-1-color);border-radius:var(--td-radius-medium);overflow:hidden;margin-bottom:16px}
 .scope-list>p{padding:16px}
@@ -294,7 +301,8 @@ pre{background:var(--td-bg-color-page);border-color:var(--td-border-level-1-colo
   .scope-remove{grid-area:remove;justify-self:end}
   .ref-head{display:none}
   .ref-row{grid-template-columns:1fr;gap:8px}
-  .ref-row .ref-remove{justify-self:start}
+  .ref-remove{justify-self:start}
+  .endpoint-row{grid-template-columns:1fr}
   .access-actions{display:block}
 }
 </style>
@@ -370,6 +378,8 @@ label.field .scope-source-row { display: grid; grid-template-columns: minmax(0, 
   <button data-tab="network">Network</button>
   <button data-tab="config">Config</button>
   <button data-tab="plugins">Plugins</button>
+  <button data-tab="apis">APIs</button>
+  <button data-tab="cron">Cron</button>
   <button data-tab="access">Access</button>
   <button data-tab="chats">Chats</button>
   <button data-tab="sessions">Sessions</button>
@@ -504,6 +514,60 @@ label.field .scope-source-row { display: grid; grid-template-columns: minmax(0, 
       <div class="note">Only enabled plugins are offered to the model. Writes, deletes, shell, and MCP calls still ask for approval in the app.</div>
       <div id="p-list"><p class="muted">Checking...</p></div>
       <div class="row"><span class="muted small" id="p-msg"></span></div>
+    </div>
+  </section>
+
+  <section id="tab-apis">
+    <div class="card">
+      <h2>API settings <small>map, search, images, and MCP in one place</small></h2>
+      <p class="muted">Map tiles and geocoding use these settings. Amap and OpenStreetMap need no key; Mapbox/custom use the key or tile URL below.</p>
+      <div class="two">
+        <label class="field"><span>Map provider</span>
+          <select id="api-map-provider">
+            <option value="osm">OpenStreetMap (no key)</option>
+            <option value="amap">Amap / 高德</option>
+            <option value="mapbox">Mapbox</option>
+            <option value="google">Google Maps</option>
+            <option value="custom">Custom tile URL</option>
+          </select>
+        </label>
+        <label class="field"><span>Map tile URL <small>optional for custom</small></span>
+          <input id="api-map-tile" type="text" placeholder="https://.../{z}/{x}/{y}.png">
+        </label>
+      </div>
+      <div class="two">
+        <label class="field"><span>Mapbox/custom key <small id="api-map-key-state"></small></span>
+          <input id="api-map-key" type="password" placeholder="leave blank to keep">
+        </label>
+        <label class="field"><span>Geocoder URL</span>
+          <input id="api-map-geocode" type="text" placeholder="https://nominatim.openstreetmap.org/search">
+        </label>
+      </div>
+      <label class="small"><input type="checkbox" id="api-map-clear"> clear the saved map key</label>
+      <div class="row"><button class="btn primary" id="api-map-save">Save API settings</button><span class="muted small" id="api-map-msg"></span></div>
+    </div>
+    <div class="card">
+      <h2>API inventory <small>what the agent can use</small></h2>
+      <div class="grid" id="api-inventory"><p class="muted">Checking...</p></div>
+    </div>
+  </section>
+
+  <section id="tab-cron">
+    <div class="card">
+      <h2>Scheduled tasks <small>one-time or repeating intervals</small></h2>
+      <p class="muted">Schedules run through the agent. A running model is required; each task starts in its own session.</p>
+      <div class="two">
+        <label class="field"><span>Prompt</span><input id="cron-content" type="text" placeholder="What should run?"></label>
+        <label class="field"><span>Run after <small>minutes</small></span><input id="cron-delay" type="number" min="0" step="1" value="0"></label>
+      </div>
+      <div class="two">
+        <label class="field"><span>Repeat every <small>hours; 0 = once</small></span><input id="cron-interval" type="number" min="0" step="0.5" value="0"></label>
+        <div class="row" style="align-items:flex-end"><button class="btn primary" id="cron-add">Add schedule</button><span class="muted small" id="cron-msg"></span></div>
+      </div>
+    </div>
+    <div class="card">
+      <h2>Scheduled tasks <small id="cron-count"></small></h2>
+      <div id="cron-list"><p class="muted">Checking...</p></div>
     </div>
   </section>
 
@@ -912,6 +976,7 @@ const ZH = {
   "Reference name": "引用名称",
   "Folder path": "目录路径",
   "No directory references yet.": "还没有目录引用。",
+  "Copy reference": "复制引用",
   "Directory references saved.": "目录引用已保存。",
   "Access permissions saved.": "访问权限已保存。",
   "Name": "名称",
@@ -1697,7 +1762,7 @@ async function loadNetwork() {
           <button class="btn danger" data-remove-key="${k.index}">Remove</button>
         </span>
       </div>`).join("") || '<span class="muted small">No keys configured.</span>';
-    $("n-result").innerHTML = `<div class="row">
+    $("n-result").innerHTML = `<div class="row endpoint-row">
       <div class="fact"><b>API (this PC)</b><span><code>http://127.0.0.1:${esc(c.port)}/v1</code></span></div>
       <div class="fact"><b>API (LAN)</b><span>${(c.lan_urls || []).map((u) => `<code>${esc(u)}/v1</code>`).join("<br>") || "none detected"}</span></div>
       <div class="fact"><b>Anthropic</b><span><code>http://127.0.0.1:${esc(c.port)}/v1/messages</code></span></div>
@@ -2082,7 +2147,12 @@ function renderScopes(scopes) {
 function refRow(name = "", path = "") {
   return `
     <div class="ref-row" data-ref-row>
-      <input data-ref-name value="${esc(name)}" placeholder="${esc(tr("Reference name"))}" aria-label="${esc(tr("Reference name"))}">
+      <span class="ref-name-wrap">
+        <input data-ref-name value="${esc(name)}" placeholder="${esc(tr("Reference name"))}" aria-label="${esc(tr("Reference name"))}">
+        <button class="ref-copy-icon" type="button" data-ref-copy title="${esc(tr("Copy reference"))}" aria-label="${esc(tr("Copy reference"))}"${name ? "" : " disabled"}>
+          <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><rect x="5" y="5" width="8" height="8" rx="1.5"></rect><path d="M3 10V3.5A1.5 1.5 0 0 1 4.5 2H10"></path></svg>
+        </button>
+      </span>
       <input data-ref-path value="${esc(path)}" placeholder="${esc(tr("Folder path"))}" aria-label="${esc(tr("Folder path"))}">
       <button class="btn danger ref-remove" type="button" data-ref-remove>${esc(tr("Remove"))}</button>
     </div>`;
@@ -2124,6 +2194,26 @@ function readRefs() {
     if (name || path) refs[name] = path;
   }
   return refs;
+}
+
+async function copyReference(button) {
+  const row = button.closest("[data-ref-row]");
+  const name = row?.querySelector("[data-ref-name]")?.value.trim();
+  if (!name) return;
+  const value = "${" + name + "}";
+  try {
+    await navigator.clipboard.writeText(value);
+  } catch (e) {
+    const area = document.createElement("textarea");
+    area.value = value;
+    area.style.position = "fixed";
+    area.style.opacity = "0";
+    document.body.appendChild(area);
+    area.select();
+    document.execCommand("copy");
+    area.remove();
+  }
+  toast((LANG === "zh" ? "已复制 " : "Copied ") + value);
 }
 
 function readScopesRaw() {
@@ -2356,6 +2446,103 @@ async function openChat(id) {
   } catch (e) { toast(e.message, true); }
 }
 
+async function loadApis() {
+  try {
+    renderApis(await api("/api/plugins"));
+  } catch (e) {
+    $("api-inventory").innerHTML = `<p class="muted">${esc(e.message)}</p>`;
+  }
+}
+
+function renderApis(data) {
+  const map = data.map || {};
+  $("api-map-provider").value = map.provider || "osm";
+  $("api-map-tile").value = map.tile_url || "";
+  $("api-map-geocode").value = map.geocode_url || "https://nominatim.openstreetmap.org/search";
+  $("api-map-key").value = "";
+  $("api-map-clear").checked = false;
+  $("api-map-key-state").textContent = map.api_key_set ? "(saved; leave blank to keep)" : "(not set)";
+  const web = data.web || {};
+  const image = data.image || {};
+  const servers = (data.mcp && data.mcp.servers) || [];
+  const rows = [
+    ["Map", map.provider || "osm", map.api_key_set ? "key saved" : "no key", map.tile_url || "default tiles"],
+    ["Web search", web.provider || "none", web.api_key_set ? "key saved" : "no key", web.url || "provider default"],
+    ["Images", image.enabled === false ? "disabled" : "enabled", "", image.url || "ComfyUI"],
+    ["MCP", `${servers.length} server${servers.length === 1 ? "" : "s"}`, "", "configure in Plugins"]
+  ];
+  $("api-inventory").innerHTML = rows.map(([name, status, key, extra]) => `
+    <div class="tool-row">
+      <b>${esc(name)}</b>
+      <span class="tag">${esc(status)}</span>
+      <span class="small muted">${esc(key)}${key && extra ? " · " : ""}${esc(extra)}</span>
+    </div>`).join("");
+}
+
+async function saveMapApi() {
+  const map = {
+    provider: $("api-map-provider").value,
+    tile_url: $("api-map-tile").value.trim(),
+    geocode_url: $("api-map-geocode").value.trim()
+  };
+  if ($("api-map-clear").checked) map.clear_api_key = true;
+  const key = $("api-map-key").value.trim();
+  if (key) map.api_key = key;
+  try {
+    renderApis(await api("/api/plugins", {method: "POST", body: JSON.stringify({map})}));
+    $("api-map-msg").textContent = "Saved.";
+    toast("API settings saved.");
+  } catch (e) {
+    $("api-map-msg").textContent = e.message;
+    toast(e.message, true);
+  }
+}
+
+async function loadCron() {
+  $("cron-list").innerHTML = '<p class="muted">Checking...</p>';
+  try {
+    const data = await api("/api/schedules");
+    renderCron(data.schedules || []);
+  } catch (e) {
+    $("cron-list").innerHTML = `<p class="muted">${esc(e.message)}</p>`;
+    $("cron-count").textContent = "";
+  }
+}
+
+function renderCron(items) {
+  $("cron-count").textContent = `${items.length} configured`;
+  $("cron-list").innerHTML = items.length ? items.map((item) => {
+    const next = item.next_run_at ? new Date(item.next_run_at).toLocaleString() : "-";
+    const last = item.last_run_at ? new Date(item.last_run_at).toLocaleString() : "never";
+    const repeat = item.interval_s ? `every ${Math.round(item.interval_s / 60)} min` : "once";
+    return `<div class="tool-row">
+      <div style="flex:1 1 100%">
+        <div><b>${esc(item.content || "(empty)")}</b></div>
+        <div class="small muted">next ${esc(next)} · last ${esc(last)} · ${esc(repeat)} · ${item.enabled ? "enabled" : "done"}</div>
+      </div>
+      <button class="btn danger" data-cron-delete="${esc(item.id)}">Delete</button>
+    </div>`;
+  }).join("") : '<p class="muted">No scheduled tasks.</p>';
+}
+
+async function addCron() {
+  const content = $("cron-content").value.trim();
+  if (!content) { toast("Enter a prompt first.", true); return; }
+  const delay = Math.max(0, +($("cron-delay").value || 0)) * 60;
+  const hours = Math.max(0, +($("cron-interval").value || 0));
+  const payload = {content, delay_s: delay};
+  if (hours > 0) payload.interval_s = Math.round(hours * 3600);
+  try {
+    await api("/api/schedules", {method: "POST", body: JSON.stringify(payload)});
+    $("cron-content").value = "";
+    $("cron-delay").value = "0";
+    $("cron-interval").value = "0";
+    $("cron-msg").textContent = "Added.";
+    await loadCron();
+    toast("Scheduled task added.");
+  } catch (e) { toast(e.message, true); }
+}
+
 function render() {
   if (!S) return;
   renderOverview();
@@ -2375,6 +2562,8 @@ document.querySelectorAll("nav button").forEach((b) => b.addEventListener("click
   if (sessionsTimer) { clearInterval(sessionsTimer); sessionsTimer = null; }
   if (tab === "config") loadModelConfig();
   if (tab === "plugins") loadPlugins();
+  if (tab === "apis") loadApis();
+  if (tab === "cron") loadCron();
   if (tab === "access") loadAccess();
   if (tab === "chats") loadChats();
   if (tab === "sessions") { loadSessions(); sessionsTimer = setInterval(loadSessions, 1500); }
@@ -2582,6 +2771,8 @@ document.addEventListener("click", (event) => {
     savePlugins();
   }
 });
+$("api-map-save").addEventListener("click", saveMapApi);
+$("cron-add").addEventListener("click", addCron);
 $("p-fetch-save").addEventListener("click", saveWebFetch);
 $("p-limits-save").addEventListener("click", saveAgentLimits);
 $("p-sandbox-save").addEventListener("click", saveSandbox);
@@ -2592,6 +2783,14 @@ $("scope-add").addEventListener("click", () => {
 });
 $("ref-save").addEventListener("click", saveReferences);
 $("ref-add").addEventListener("click", () => addRefRow());
+$("ref-list").addEventListener("input", (e) => {
+  const input = e.target.closest("[data-ref-name]");
+  if (!input) return;
+  const row = input.closest("[data-ref-row]");
+  const button = row?.querySelector("[data-ref-copy]");
+  if (!button) return;
+  button.disabled = !input.value.trim();
+});
 $("ch-refresh").addEventListener("click", loadChats);
 $("rename-cancel").addEventListener("click", () => { $("rename-modal").hidden = true; });
 $("rename-save").addEventListener("click", async () => {
@@ -2639,10 +2838,24 @@ document.addEventListener("click", async (e) => {
     loadFolder(folder.dataset.folderPath);
     return;
   }
+  const refCopy = e.target.closest && e.target.closest("[data-ref-copy]");
+  if (refCopy) {
+    await copyReference(refCopy);
+    return;
+  }
   const refRemove = e.target.closest && e.target.closest("[data-ref-remove]");
   if (refRemove) {
     refRemove.closest("[data-ref-row]")?.remove();
     if (!document.querySelector("[data-ref-row]")) renderRefs({});
+    return;
+  }
+  const cronDelete = e.target.closest && e.target.closest("[data-cron-delete]");
+  if (cronDelete) {
+    try {
+      await api("/api/schedules/delete", {method: "POST", body: JSON.stringify({id: cronDelete.dataset.cronDelete})});
+      await loadCron();
+      toast("Scheduled task deleted.");
+    } catch (err) { toast(err.message, true); }
     return;
   }
   const remove = e.target.closest && e.target.closest("[data-scope-remove]");
