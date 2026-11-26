@@ -1,7 +1,8 @@
 {
   "title": "Strata",
   "tracks": {
-    "gui": "App / GUI"
+    "gui": "App / GUI",
+    "engine": "Engine / Server"
   },
   "milestones": {
     "M1": {
@@ -10,6 +11,14 @@
     }
   },
   "nodes": [
+    {
+      "id": "engine-agent-idle-recovery-20261126",
+      "track": "engine",
+      "milestone": "M1",
+      "title": "8080 首响应观测与托管 sidecar 恢复",
+      "status": "now",
+      "note": "隔离子进程验证本机恢复路径。待在手机自然静默窗口取得对应客户端和服务端时间。"
+    },
     {
       "id": "g-settings-memory-20261126",
       "track": "gui",

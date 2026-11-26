@@ -5793,6 +5793,7 @@ def make_handler(svc: Service):
 
         def send_response(self, code, message=None):
             self.answer_started = True                 # a malformed-request answer can only replace one not yet begun
+            self.response_status = code
             super().send_response(code, message)
 
         def _chunked(self) -> bool:
@@ -5902,6 +5903,7 @@ def make_handler(svc: Service):
                 return False
             host = self.headers.get("Host")
             if svc.api_key or host_allowed(host, svc.host_names, "*" in svc.allowed_hosts):
+                self.server.request_probe(self.connection, self.headers.get("X-Lum-Probe", ""))
                 return True
             print(f"[strata] refused a request for Host {host!r} from {self.client_address[0]}: not a name this server "
                   f"answers to (add it to \"allowed_hosts\" in the config or STRATA_ALLOWED_HOSTS, or set an API key)",
@@ -5941,6 +5943,7 @@ def make_handler(svc: Service):
             # server ever reading it (a .NET agent app, 2026-10-03: 25 of ~1000 requests, 1-24 ms after the previous answer).
             self.send_header("Connection", "close")
             super().end_headers()
+            self.server.first_headers_sent(self.connection, getattr(self, "response_status", None))
 
         def _watch_client(self, cancel: threading.Event) -> None:
             """#430 #431: cancel the request as soon as its client hangs up.  A non-streamed request writes nothing
@@ -6107,7 +6110,8 @@ def make_handler(svc: Service):
                     return
                 if self._authorized():
                     # the last 12 requests; `?requests=all` every one kept (the Monitor's "Show all", issue #35)
-                    self._json(200, svc.metrics(all_requests="requests=all" in self.path))
+                    self._json(200, {**svc.metrics(all_requests="requests=all" in self.path),
+                                     "http_connections": self.server.connection_metrics()})
                 return
             if path == "/v1/telemetry":
                 if self._authorized_telemetry():
@@ -7166,8 +7170,69 @@ class Server(ThreadingHTTPServer):
     # (STRATA_HTTP_BACKLOG overrides it)
     request_queue_size = max(5, int(os.environ.get("STRATA_HTTP_BACKLOG") or 256))
 
+    def __init__(self, *args, **kwargs):
+        self._connections_lock = threading.Lock()
+        self._awaiting_headers = {}
+        self._accepted = 0
+        self._closed_before_headers = 0
+        self._connection_errors = 0
+        self._first_headers = {"le_50ms": 0, "50ms_to_1s": 0, "1s_to_10s": 0, "gt_10s": 0}
+        self._recent_probes = collections.deque(maxlen=32)
+        self._pending_probes = {}
+        super().__init__(*args, **kwargs)
+
+    def get_request(self):
+        request, address = super().get_request()
+        with self._connections_lock:
+            self._awaiting_headers[request] = time.monotonic()
+            self._accepted += 1
+        return request, address
+
+    def request_probe(self, request, probe):
+        if probe and re.fullmatch("[a-f0-9]{16}", probe):
+            with self._connections_lock:
+                self._pending_probes[request] = probe
+
+    def first_headers_sent(self, request, status=None):
+        with self._connections_lock:
+            started = self._awaiting_headers.pop(request, None)
+            if started is not None:
+                delay = time.monotonic() - started
+                bucket = ("le_50ms" if delay <= 0.05 else "50ms_to_1s" if delay <= 1
+                          else "1s_to_10s" if delay <= 10 else "gt_10s")
+                self._first_headers[bucket] += 1
+                probe = self._pending_probes.pop(request, None)
+                if probe:
+                    self._recent_probes.append({"id": probe, "at_unix_ms": int(time.time() * 1000),
+                                                "http_status": status, "accept_to_first_headers_ms": round(delay * 1000, 1)})
+
+    def close_request(self, request):
+        with self._connections_lock:
+            started = self._awaiting_headers.pop(request, None)
+            probe = self._pending_probes.pop(request, None)
+            if started is not None:
+                self._closed_before_headers += 1
+                if probe:
+                    self._recent_probes.append({"id": probe, "at_unix_ms": int(time.time() * 1000),
+                                                "closed_before_headers_ms": round((time.monotonic() - started) * 1000, 1)})
+        super().close_request(request)
+
+    def connection_metrics(self):
+        """Aggregate socket observations since this listener started, without client identities or paths."""
+        with self._connections_lock:
+            return {"listener_instance": getattr(getattr(self, "svc", None), "instance_id", None),
+                    "at_unix_ms": int(time.time() * 1000), "recent_probes": list(self._recent_probes),
+                    "pending_probe_ids": list(self._pending_probes.values()),
+                    "accepted": self._accepted, "awaiting_first_headers": len(self._awaiting_headers),
+                    "closed_before_first_headers": self._closed_before_headers,
+                    "connection_errors": self._connection_errors,
+                    "accept_to_first_headers": self._first_headers.copy()}
+
     def handle_error(self, request, client_address):
-        if not isinstance(sys.exc_info()[1], ConnectionError):   # a client that hangs up needs no stack trace
+        if isinstance(sys.exc_info()[1], ConnectionError):  # a client that hangs up needs no stack trace
+            with self._connections_lock:
+                self._connection_errors += 1
+        else:
             super().handle_error(request, client_address)
 
     def server_close(self):
@@ -8317,7 +8382,7 @@ def main(argv=None, *, lifecycle_event=None, interrupt_exit_code: int = 0) -> in
         atexit.register(hub.close)                      # the servers Strata started end with it
     httpd = serve(svc, host=a.host, port=a.port)
     bound_port = httpd.server_address[1]               # --port 0: report the port the OS actually assigned
-    lite_agent.start(svc, a.host, a.port)
+    lite_agent.start(svc, a.host, bound_port)
     import atexit
     atexit.register(lite_agent.stop)
     svc.start_idle_unload()

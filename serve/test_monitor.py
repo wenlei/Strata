@@ -1,5 +1,6 @@
 """Request inspection through HTTP; no native model or GPU is required."""
 import json
+import socket
 import threading
 import time
 import unittest
@@ -83,6 +84,31 @@ class Monitor(unittest.TestCase):
         return self.request("/v1/messages" if api == "anthropic" else "/v1/chat/completions",
                             {"messages": [{"role": "user", "content": "Say hello."}],
                              "max_tokens": 256, **think, **kwargs})
+
+    def test_connection_metrics_distinguish_no_request_from_first_headers(self):
+        self.svc.api_key = "test-only"
+        auth = {"Authorization": "Bearer test-only"}
+        with socket.create_connection(self.httpd.server_address, timeout=2):
+            pass
+        for _ in range(100):
+            if self.httpd.connection_metrics()["closed_before_first_headers"] > 0:
+                break
+            time.sleep(.01)
+        self.assertEqual(self.request("/metrics")[0], 401)
+        self.assertEqual(self.request("/health", headers={"X-Lum-Probe": "ab12" * 4})[0], 200)
+        try:
+            raise ConnectionResetError()
+        except ConnectionResetError:
+            self.httpd.handle_error(None, None)
+        status, metrics = self.request("/metrics", headers=auth)
+        self.assertEqual(status, 200)
+        counts = metrics["http_connections"]
+        self.assertEqual(counts["closed_before_first_headers"], 1)
+        self.assertEqual(counts["connection_errors"], 1)
+        self.assertEqual(sum(counts["accept_to_first_headers"].values()), 2)
+        self.assertEqual(counts["accepted"], 4)
+        self.assertEqual(counts["listener_instance"], self.svc.instance_id)
+        self.assertEqual([p["id"] for p in counts["recent_probes"]], ["ab12" * 4])
 
     def latest(self):
         summary = self.request("/api/requests")[1]["requests"][0]
