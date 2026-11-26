@@ -17,6 +17,17 @@
       "title": "8090 记忆整理预览、分类索引与批量重试",
       "status": "done",
       "note": "Agent BUG-059～062 已在两仓临时 HTTP 服务和 SQLite 联测。设置页 67 项、账号与引擎设置 18 项和表单 9 项通过。"
+    },
+    {
+      "id": "g-settings-memory-deploy-20261126",
+      "track": "gui",
+      "milestone": "M1",
+      "title": "8090 记忆整理上线验证",
+      "status": "done",
+      "deps": [
+        "g-settings-memory-20261126"
+      ],
+      "note": "8080、8090 和 8099 已配套重启。线上合成记忆验证过期预览拒绝，重复应用同一有效预览仅生成一条成功回执。测试记录已清理。"
     }
   ]
 }
