@@ -12,6 +12,7 @@ import argparse
 import hmac
 import json
 import os
+import re
 import secrets
 import shutil
 import string
@@ -40,6 +41,114 @@ DEFAULT_PORT = 8090
 MAX_BODY = 1 << 20
 HOSTS = ("127.0.0.1", "0.0.0.0")
 ENGINE_DEFAULTS = {"spec": 4, "spec_min_p": 0.5}
+DREAM_MAX_ITEMS = 400
+DREAM_MAX_CHARS = 160_000
+DREAM_MAX_VALUE_CHARS = 2_000
+DREAM_MAX_KEY_CHARS = 200
+DREAM_MAX_CHANGES = 400
+DREAM_MAX_OUTPUT_TOKENS = 16_384
+MERGE_MAX_VALUE_CHARS = 1_200
+MEMORY_INDEX_KEY = "index:memory-categories"
+MEMORY_CATEGORIES = (
+    "profile", "preference", "project", "environment",
+    "reference", "issue", "contact", "general",
+)
+MEMORY_CATEGORY_TITLES = {
+    "profile": "个人与家庭",
+    "preference": "工作偏好",
+    "project": "项目与任务",
+    "environment": "主机/网络/工具",
+    "reference": "外部资料",
+    "issue": "问题与修复",
+    "contact": "联系人",
+    "general": "其他",
+}
+DREAM_SYSTEM_PROMPT = (
+    "You maintain an assistant's memory. You receive session memory (term "
+    "\"short\", scope \"session:<id>\") and long-term memory (term \"long\", "
+    "scope \"global\").\n"
+    "Do four jobs.\n"
+    "1. Review every session memory. Promote one to long-term only when the "
+    "user asked to remember it for later, when it is a stable preference, "
+    "fact, decision, or constraint the user will need again, or when the same "
+    "fact appears in several sessions or was recalled repeatedly. Do not "
+    "promote transient task details, one-off errors, chat text, or facts "
+    "useful only in that conversation.\n"
+    "2. Make every long-term entry short and focused: one fact or one small "
+    "topic per entry, as short as possible while keeping every fact, number, "
+    "date, path, URL, command, name, error, uncertainty, and constraint. Every "
+    "long-term value longer than 400 characters MUST be split into several "
+    "short entries with their own keys; do not leave such an entry unchanged. "
+    "An entry may stay unchanged only when its value is 400 characters or "
+    "less. Do not merge unrelated facts into one entry.\n"
+    "3. Classify every entry with exactly one category: profile (identity, "
+    "family, personal facts, preferences and habits), preference (how the "
+    "assistant should work), project (ongoing projects, code, tasks and plans), "
+    "environment (hardware, OS, network, paths and installed tools), reference "
+    "(external sources, URLs and documents), issue (bugs, incidents, root "
+    "causes and fixes), contact (people and contact details), general (anything "
+    "else). Use a short, stable key, for example language or nas-address. "
+    "Personal facts about the user belong in profile; store one fact per "
+    "entry.\n"
+    "4. Merge exact duplicates, delete entries only when another operation "
+    "keeps every fact from them, and return only the operations that change "
+    "something. Omit a memory that stays the same. Never add a fact. Write in "
+    "the original language; Chinese input stays Chinese. Never translate.\n"
+    "Return JSON only, with this shape:\n"
+    '{"summary":"one sentence","operations":[{"op":"update","id":"existing id",'
+    '"key":"new key","value":"new value","term":"long","category":"profile",'
+    '"reason":"why"},{"op":"create","key":"new key","value":"new value",'
+    '"term":"long","category":"profile","session_id":"only for a short create",'
+    '"reason":"why"},{"op":"delete","id":"existing id","reason":"why"}]}\n'
+    "To promote, use update with term \"long\"; it becomes global. To merge, "
+    "update the entry to keep, then delete the others only if every fact from "
+    "them is kept. To split, update the original with one part, then create the "
+    "other parts. A short create needs the session_id of an existing session "
+    "memory."
+)
+MERGE_SYSTEM_PROMPT = (
+    "You merge an assistant's long-term memories. Find groups of entries that "
+    "describe the same topic, issue, project, preference, or person. Merge each "
+    "group into ONE short entry. Keep every fact, number, date, path, URL, "
+    "command, name, error, uncertainty, and constraint. Never add a fact. Do "
+    "not merge unrelated topics. The merged value must be 1,200 characters or "
+    "less; if a group cannot fit, leave it unmerged. Use the group's category "
+    "and a short, stable key.\n"
+    "The first id in each group is the entry to keep; the other ids in that "
+    "group will be deleted after the merge, so the merged value must keep every "
+    "fact from all of them. Return JSON only, with this shape:\n"
+    '{"operations":[{"op":"merge","ids":["id-1","id-2"],"key":"merged-key",'
+    '"value":"merged value","category":"issue","reason":"same issue"}]}\n'
+    "Include every group you can merge. Do not include a group of one entry."
+)
+CONCISE_SYSTEM_PROMPT = (
+    "You shorten long saved memories. For each memory you receive, split it "
+    "into one or more short entries. Each new value must be 400 characters or "
+    "less and must contain one fact or one small topic. Keep every fact, "
+    "number, date, path, URL, command, name, error, uncertainty, and "
+    "constraint. Never add a fact. Keep the same category and language. Use a "
+    "short, stable key; when splitting, add a short suffix to the original key.\n"
+    "Do not delete the original entry: update it with the first part, then "
+    "create the other parts. If an entry is already 400 characters or less, "
+    "omit it. Return JSON only, with this shape:\n"
+    '{"operations":[{"op":"update","id":"existing id","key":"part-1",'
+    '"value":"part 1","category":"profile","reason":"split"},'
+    '{"op":"create","key":"part-2","value":"part 2","category":"profile",'
+    '"term":"long","reason":"split"}]}'
+)
+CLASSIFY_SYSTEM_PROMPT = (
+    "You classify an assistant's saved memories. Assign exactly one category "
+    "to every memory you receive.\n"
+    "Categories: profile (identity, family, personal facts, preferences and "
+    "habits), preference (how the assistant should work), project (ongoing "
+    "projects, code, tasks and plans), environment (hardware, OS, network, "
+    "paths and installed tools), reference (external sources, URLs and "
+    "documents), issue (bugs, incidents, root causes and fixes), contact "
+    "(people and contact details), general (anything else).\n"
+    "Personal facts about the user belong in profile. Do not change a key or a "
+    "value. Return JSON only, with this shape:\n"
+    '{"operations":[{"op":"update","id":"existing id","category":"profile"}]}'
+)
 _FOLDER_LOCK = threading.Lock()
 
 
@@ -853,12 +962,16 @@ class App:
         body["port"] = port
         return body
 
-    def agent_memories(self, query: str = "") -> dict:
+    def agent_memories(self, query: str = "", category: str = "", *,
+                       scope: str = "", limit: int = 500) -> dict:
         port, key = self._agent_target()
-        limit = 200
         url = f"http://127.0.0.1:{port}/v1/agent/memories?limit={limit}"
+        if scope:
+            url += "&scope=" + urllib.parse.quote(scope, safe="")
         if query.strip():
             url += "&query=" + urllib.parse.quote(query.strip(), safe="")
+        if category.strip():
+            url += "&category=" + urllib.parse.quote(category.strip(), safe="")
         status, body = mcp.http_json(url, api_key=key, timeout=5)
         if status != 200 or not isinstance(body, dict):
             raise ValueError(f"cannot read agent memories from port {port} (HTTP {status})")
@@ -916,6 +1029,796 @@ class App:
         if status not in (200, 404):
             raise ValueError(f"cannot delete that agent memory (HTTP {status})")
         return {"deleted": memory_id}
+
+    def _running_model(self) -> str:
+        status = self.tools.strata_status(hardware=False)
+        running = status.get("running") or []
+        model = running[0].get("model") if running else None
+        return str(model or "local").strip() or "local"
+
+    @staticmethod
+    def _dream_operations(content: str) -> dict:
+        text = str(content or "").strip()
+        if text.startswith("```"):
+            text = text.split("\n", 1)[-1]
+            if text.rstrip().endswith("```"):
+                text = text.rstrip()[:-3]
+        start = text.find("{")
+        end = text.rfind("}")
+        if start < 0 or end < start:
+            raise ValueError("the model did not return a JSON object")
+        try:
+            data = json.loads(text[start:end + 1])
+        except ValueError:
+            raise ValueError("the model returned invalid JSON") from None
+        if not isinstance(data, dict):
+            raise ValueError("the model returned no operations")
+        operations = data.get("operations")
+        if operations is None and isinstance(data.get("entries"), list):
+            operations = [
+                {"op": "update", "id": item.get("id"), "value": item.get("value")}
+                for item in data["entries"]
+                if isinstance(item, dict)
+            ]
+        if not isinstance(operations, list):
+            raise ValueError("the model returned no operations")
+        return {
+            "summary": str(data.get("summary") or "").strip(),
+            "operations": [item for item in operations if isinstance(item, dict)],
+        }
+
+    def _dream_completion(
+        self, prompt: str, system_prompt: str = DREAM_SYSTEM_PROMPT
+    ) -> str:
+        port, key = self._agent_target()
+        status, body = mcp.http_json(
+            f"http://127.0.0.1:{port}/v1/chat/completions",
+            method="POST",
+            body={
+                "model": self._running_model(),
+                "messages": [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": prompt},
+                ],
+                "temperature": 0.2,
+                "max_tokens": DREAM_MAX_OUTPUT_TOKENS,
+                "stream": False,
+                "reasoning_effort": "none",
+            },
+            api_key=key,
+            timeout=180,
+        )
+        if status != 200 or not isinstance(body, dict):
+            raise ValueError(f"the model could not dream the memories (HTTP {status})")
+        choices = body.get("choices")
+        if not isinstance(choices, list) or not choices:
+            raise ValueError("the model returned no answer")
+        message = choices[0].get("message") if isinstance(choices[0], dict) else None
+        content = message.get("content") if isinstance(message, dict) else None
+        if not isinstance(content, str) or not content.strip():
+            raise ValueError("the model returned an empty answer")
+        return content
+
+    def _dream_completion_retry(
+        self, prompt: str, system_prompt: str = DREAM_SYSTEM_PROMPT
+    ) -> dict:
+        last_error = None
+        for _ in range(2):
+            content = self._dream_completion(prompt, system_prompt)
+            try:
+                return self._dream_operations(content)
+            except ValueError as error:
+                last_error = error
+                if "JSON" not in str(error) and "operations" not in str(error):
+                    raise
+        raise ValueError(str(last_error or "the model returned invalid JSON"))
+
+    @staticmethod
+    def _memory_snapshot(row: dict) -> dict:
+        snapshot = {
+            "key": str(row.get("key") or ""),
+            "value": str(row.get("value") or ""),
+            "term": str(row.get("term") or "long"),
+            "scope": str(row.get("scope") or ""),
+            "category": str(row.get("category") or "general"),
+            "session_id": str(row.get("session_id") or ""),
+        }
+        if row.get("updated_at"):
+            snapshot["updated_at"] = row["updated_at"]
+        return snapshot
+
+    @staticmethod
+    def _is_memory_index(row: dict) -> bool:
+        return (row.get("key") == MEMORY_INDEX_KEY and row.get("scope") == "global"
+                and row.get("term", "long") == "long")
+
+    @classmethod
+    def _dream_changes(cls, operations: list[dict], memories: dict[str, dict]) -> list[dict]:
+        changes: list[dict] = []
+        updated: set[str] = set()
+        deleted: set[str] = set()
+        known_sessions = {
+            str(row.get("session_id") or "").strip()
+            for row in memories.values()
+            if str(row.get("session_id") or "").strip()
+        }
+        touched = {
+            str(item.get("id") or "").strip()
+            for item in operations
+            if str(item.get("op") or "").strip().lower() in ("update", "promote", "delete")
+            and str(item.get("id") or "").strip()
+        }
+        for item in operations:
+            op = str(item.get("op") or "").strip().lower()
+            if not op:
+                op = "update" if str(item.get("id") or "").strip() else "create"
+            if op == "promote":
+                op = "update"
+            memory_id = str(item.get("id") or "").strip()
+            reason = str(item.get("reason") or "").strip()[:400]
+            if op == "update":
+                current = memories.get(memory_id)
+                if current is None:
+                    raise ValueError(f"memory not found: {memory_id}")
+                if memory_id in updated:
+                    raise ValueError(f"memory is changed twice: {memory_id}")
+                if memory_id in deleted:
+                    raise ValueError(f"memory is updated and deleted: {memory_id}")
+                key = item.get("key")
+                value = item.get("value")
+                term = item.get("term")
+                key = (str(current.get("key") or "").strip()
+                       if key is None else str(key).strip())
+                value = (str(current.get("value") or "")
+                         if value is None else str(value))
+                if not key:
+                    raise ValueError("a memory key cannot be empty")
+                if len(key) > DREAM_MAX_KEY_CHARS:
+                    raise ValueError("a memory key is too long")
+                if not value.strip():
+                    raise ValueError("a memory value cannot be empty")
+                if len(value) > DREAM_MAX_VALUE_CHARS:
+                    raise ValueError("a memory value is too long")
+                term = str(term or current.get("term") or "long").strip()
+                if term not in ("long", "short"):
+                    raise ValueError("term must be long or short")
+                category = str(
+                    item.get("category") or current.get("category") or "general"
+                ).strip().lower()
+                if category not in MEMORY_CATEGORIES:
+                    raise ValueError(
+                        "category must be one of " + ", ".join(MEMORY_CATEGORIES)
+                    )
+                session_id = str(
+                    item.get("session_id") or current.get("session_id") or ""
+                ).strip()
+                if term == "short":
+                    if not session_id or session_id not in known_sessions:
+                        raise ValueError(
+                            f"a short-term memory needs an existing session: {memory_id}"
+                        )
+                    scope = f"session:{session_id}"
+                else:
+                    scope = "global"
+                    session_id = ""
+                before_key = str(current.get("key") or "")
+                before_value = str(current.get("value") or "")
+                before_term = str(current.get("term") or "long")
+                before_scope = str(current.get("scope") or "")
+                before_category = str(current.get("category") or "general")
+                if (
+                    key == before_key
+                    and value == before_value
+                    and term == before_term
+                    and scope == before_scope
+                    and category == before_category
+                ):
+                    updated.add(memory_id)
+                    continue
+                change = {
+                    "op": "update",
+                    "id": memory_id,
+                    "key": key,
+                    "value": value,
+                    "term": term,
+                    "scope": scope,
+                    "category": category,
+                    "before": before_value,
+                    "before_key": before_key,
+                    "before_category": before_category,
+                    "expected": cls._memory_snapshot(current),
+                    "reason": reason,
+                }
+                if session_id:
+                    change["session_id"] = session_id
+                changes.append(change)
+                updated.add(memory_id)
+            elif op == "create":
+                key = str(item.get("key") or "").strip()
+                value = item.get("value")
+                if not key:
+                    raise ValueError("a new memory needs a key")
+                if len(key) > DREAM_MAX_KEY_CHARS:
+                    raise ValueError("a memory key is too long")
+                if not isinstance(value, str) or not value.strip():
+                    raise ValueError("a memory value cannot be empty")
+                if len(value) > DREAM_MAX_VALUE_CHARS:
+                    raise ValueError("a memory value is too long")
+                term = str(item.get("term") or "long").strip()
+                if term not in ("long", "short"):
+                    raise ValueError("term must be long or short")
+                category = str(item.get("category") or "general").strip().lower()
+                if category not in MEMORY_CATEGORIES:
+                    raise ValueError(
+                        "category must be one of " + ", ".join(MEMORY_CATEGORIES)
+                    )
+                session_id = str(item.get("session_id") or "").strip()
+                if term == "short" and (
+                    not session_id or session_id not in known_sessions
+                ):
+                    raise ValueError("a new short-term memory needs an existing session")
+                scope = "global" if term == "long" else f"session:{session_id}"
+                duplicate = any(
+                    row_id not in touched
+                    and str(row.get("key") or "") == key
+                    and str(row.get("value") or "") == value.strip()
+                    and str(row.get("term") or "long") == term
+                    and str(row.get("scope") or "") == scope
+                    and str(row.get("category") or "general") == category
+                    for row_id, row in memories.items()
+                )
+                if duplicate:
+                    continue
+                change = {
+                    "op": "create",
+                    "key": key,
+                    "value": value.strip(),
+                    "term": term,
+                    "scope": scope,
+                    "category": category,
+                    "reason": reason,
+                }
+                if term == "short":
+                    change["session_id"] = session_id
+                changes.append(change)
+            elif op == "delete":
+                current = memories.get(memory_id)
+                if current is None:
+                    raise ValueError(f"memory not found: {memory_id}")
+                if memory_id in updated:
+                    raise ValueError(f"memory is updated and deleted: {memory_id}")
+                if memory_id in deleted:
+                    continue
+                changes.append(
+                    {
+                        "op": "delete",
+                        "id": memory_id,
+                        "key": str(current.get("key") or ""),
+                        "value": str(current.get("value") or ""),
+                        "before": str(current.get("value") or ""),
+                        "expected": cls._memory_snapshot(current),
+                        "term": str(current.get("term") or "long"),
+                        "scope": str(current.get("scope") or ""),
+                        "category": str(current.get("category") or "general"),
+                        "reason": reason,
+                    }
+                )
+                deleted.add(memory_id)
+            else:
+                raise ValueError(f"unknown memory operation: {op}")
+        if len(changes) > DREAM_MAX_CHANGES:
+            raise ValueError(f"too many changes (the limit is {DREAM_MAX_CHANGES})")
+        return changes
+
+    def dream_agent_memory(self) -> dict:
+        memories = self.agent_memories().get("memories") or []
+        counts = {"create": 0, "update": 0, "delete": 0}
+        if not memories:
+            return {
+                "summary": "No memories to dream.",
+                "scanned": 0,
+                "changes": [],
+                "counts": counts,
+            }
+        if len(memories) > DREAM_MAX_ITEMS:
+            raise ValueError(
+                f"too many memories to dream at once ({len(memories)}; "
+                f"the limit is {DREAM_MAX_ITEMS})"
+            )
+        known: dict[str, dict] = {}
+        entries: list[dict] = []
+        for item in memories:
+            memory_id = str(item.get("id") or "").strip()
+            if not memory_id:
+                continue
+            row = {
+                "id": memory_id,
+                **self._memory_snapshot(item),
+                "created_at": str(item.get("created_at") or ""),
+                "last_used_at": str(item.get("last_used_at") or ""),
+            }
+            known[memory_id] = row
+            entries.append(row)
+        payload = json.dumps(entries, ensure_ascii=False)
+        if len(payload) > DREAM_MAX_CHARS:
+            raise ValueError(
+                "the selected memories are too large to dream at once "
+                f"({len(payload)} characters; the limit is {DREAM_MAX_CHARS})"
+            )
+        data = self._dream_completion_retry(
+            "Review and consolidate the memories below. Promote durable session "
+            "memory, merge duplicates, split mixed entries, and rewrite long-term "
+            "entries for clarity. Return JSON only with the operations that change "
+            "something.\n\n" + payload
+        )
+        changes = self._dream_changes(data["operations"], known)
+        counts = {
+            name: sum(1 for change in changes if change["op"] == name)
+            for name in ("create", "update", "delete")
+        }
+        promoted = sum(
+            1
+            for change in changes
+            if change["op"] == "update"
+            and str(known.get(change["id"], {}).get("term") or "long") != "long"
+            and change["term"] == "long"
+        )
+        parts = []
+        if counts["update"]:
+            parts.append(f"{counts['update']} updated")
+        if counts["create"]:
+            parts.append(f"{counts['create']} new")
+        if counts["delete"]:
+            parts.append(f"{counts['delete']} removed")
+        detail = ", ".join(parts)
+        summary = data["summary"] or (
+            f"Dreaming proposed {len(changes)} changes across {len(entries)} "
+            "memories"
+            + (f" ({detail})" if detail else "")
+            + ". Nothing is saved until you apply them."
+        )
+        return {
+            "summary": summary,
+            "scanned": len(entries),
+            "changes": changes,
+            "counts": counts,
+            "promoted": promoted,
+            "request_id": secrets.token_hex(16),
+        }
+
+    def classify_agent_memory(self) -> dict:
+        memories = self.agent_memories().get("memories") or []
+        counts = {"create": 0, "update": 0, "delete": 0}
+        if not memories:
+            return {
+                "summary": "No memories to classify.",
+                "scanned": 0,
+                "changes": [],
+                "counts": counts,
+            }
+        if len(memories) > DREAM_MAX_ITEMS:
+            raise ValueError(
+                f"too many memories to classify at once ({len(memories)}; "
+                f"the limit is {DREAM_MAX_ITEMS})"
+            )
+        known: dict[str, dict] = {}
+        entries: list[dict] = []
+        for item in memories:
+            memory_id = str(item.get("id") or "").strip()
+            if not memory_id:
+                continue
+            row = {"id": memory_id, **self._memory_snapshot(item)}
+            known[memory_id] = row
+            entries.append({**row, "value": row["value"][:500]})
+        payload = json.dumps(entries, ensure_ascii=False)
+        if len(payload) > DREAM_MAX_CHARS:
+            raise ValueError(
+                "the selected memories are too large to classify at once "
+                f"({len(payload)} characters; the limit is {DREAM_MAX_CHARS})"
+            )
+        data = self._dream_completion_retry(
+            "Assign exactly one category to every memory below. Do not change a "
+            "key or a value.\n\n" + payload,
+            CLASSIFY_SYSTEM_PROMPT,
+        )
+        operations: list[dict] = []
+        for item in data["operations"]:
+            memory_id = str(item.get("id") or "").strip()
+            category = str(item.get("category") or "").strip().lower()
+            if memory_id in known and category in MEMORY_CATEGORIES:
+                operations.append(
+                    {"op": "update", "id": memory_id, "category": category}
+                )
+        index_id = next(
+            (
+                memory_id
+                for memory_id, row in known.items()
+                if self._is_memory_index(row)
+            ),
+            "",
+        )
+        if index_id:
+            operations = [op for op in operations if op["id"] != index_id]
+        projected = {op["id"]: op["category"] for op in operations}
+        index_operation, _ = self._category_index(known.values(), projected)
+        changes = self._dream_changes(operations + [index_operation], known)
+        counts = {
+            name: sum(1 for change in changes if change["op"] == name)
+            for name in ("create", "update", "delete")
+        }
+        return {
+            "summary": (
+                f"Classified {len(operations)} of {len(entries)} memories and "
+                f"rebuilt the category index. Nothing is saved until you apply."
+            ),
+            "scanned": len(entries),
+            "classified": len(operations),
+            "request_id": secrets.token_hex(16),
+            "changes": changes,
+            "counts": counts,
+        }
+
+    def merge_agent_memory(self) -> dict:
+        memories = self.agent_memories().get("memories") or []
+        counts = {"create": 0, "update": 0, "delete": 0}
+        if not memories:
+            return {
+                "summary": "No memories to merge.",
+                "scanned": 0,
+                "changes": [],
+                "counts": counts,
+            }
+        known: dict[str, dict] = {}
+        entries: list[dict] = []
+        for item in memories:
+            memory_id = str(item.get("id") or "").strip()
+            if not memory_id:
+                continue
+            if (
+                str(item.get("term") or "long") == "short"
+                or str(item.get("scope") or "") != "global"
+            ):
+                continue
+            row = {"id": memory_id, **self._memory_snapshot(item)}
+            known[memory_id] = row
+            entries.append(row)
+        if len(entries) < 2:
+            return {
+                "summary": "Nothing to merge.",
+                "scanned": len(entries),
+                "changes": [],
+                "counts": counts,
+            }
+        def group_key(row: dict) -> tuple[str, str]:
+            key = str(row.get("key") or "")
+            base = re.sub(r"(?i)[\s_-]*part[\s_-]*\d+\s*$", "", key)
+            base = re.sub(r"\s+-\s+.*$", "", base)
+            return (str(row.get("category") or "general"), base.lower()[:80])
+
+        entries.sort(key=group_key)
+        batches: list[list[dict]] = []
+        batch: list[dict] = []
+        batch_chars = 0
+        for row in entries:
+            size = len(row["key"]) + len(row["value"])
+            if batch and (len(batch) >= 40 or batch_chars + size > 12_000):
+                batches.append(batch)
+                batch = []
+                batch_chars = 0
+            batch.append(row)
+            batch_chars += size
+        if batch:
+            batches.append(batch)
+        operations: list[dict] = []
+        merged_groups = 0
+        for batch in batches:
+            batch_operations, batch_groups = self._merge_batch(batch, known)
+            operations.extend(batch_operations)
+            merged_groups += batch_groups
+        if not operations:
+            return {
+                "summary": "No related entries to merge.",
+                "scanned": len(entries),
+                "changes": [],
+                "counts": counts,
+                "merged": 0,
+            }
+        changes = self._dream_changes(operations, known)
+        updated = {change["id"] for change in changes if change["op"] == "update"}
+        # A merge also depends on survivors that already have the desired content.
+        guards = [
+            {"id": op["id"], "expected": self._memory_snapshot(known[op["id"]])}
+            for op in operations if op["op"] == "update" and op["id"] not in updated
+        ]
+        counts = {
+            name: sum(1 for change in changes if change["op"] == name)
+            for name in ("create", "update", "delete")
+        }
+        return {
+            "summary": (
+                f"Merged {merged_groups} groups: {merged_groups} kept "
+                f"and {counts['delete']} old entries deleted. Nothing is saved "
+                "until you apply."
+            ),
+            "scanned": len(entries),
+            "merged": merged_groups,
+            "guards": guards,
+            "request_id": secrets.token_hex(16),
+            "changes": changes,
+            "counts": counts,
+        }
+
+    def _merge_batch(
+        self, batch: list[dict], known: dict[str, dict]
+    ) -> tuple[list[dict], int]:
+        batch_ids = {row["id"] for row in batch}
+        try:
+            payload = json.dumps(batch, ensure_ascii=False)
+            data = self._dream_completion_retry(
+                "Find groups of long-term memories that describe the same topic "
+                "and merge each group into one short entry. The first id in a "
+                "group is kept; the others will be deleted.\n\n" + payload,
+                MERGE_SYSTEM_PROMPT,
+            )
+            operations: list[dict] = []
+            used: set[str] = set()
+            groups = 0
+            for item in data["operations"]:
+                if str(item.get("op") or "").strip().lower() != "merge":
+                    continue
+                ids = item.get("ids")
+                if not isinstance(ids, list):
+                    continue
+                ids = [
+                    str(memory_id).strip()
+                    for memory_id in ids
+                    if str(memory_id).strip()
+                ]
+                ids = list(dict.fromkeys(ids))
+                if len(ids) < 2 or any(
+                    memory_id not in batch_ids for memory_id in ids
+                ):
+                    continue
+                if any(memory_id in used for memory_id in ids):
+                    continue
+                survivor = known[ids[0]]
+                key = str(item.get("key") or survivor.get("key") or "").strip()
+                value = item.get("value")
+                category = str(
+                    item.get("category")
+                    or survivor.get("category")
+                    or "general"
+                ).strip().lower()
+                if not key or len(key) > DREAM_MAX_KEY_CHARS:
+                    continue
+                if not isinstance(value, str) or not value.strip():
+                    continue
+                if len(value) > MERGE_MAX_VALUE_CHARS:
+                    continue
+                if category not in MEMORY_CATEGORIES:
+                    continue
+                merged_fact = (key, value.strip(), category)
+                facts = [
+                    (known[mid]["key"], known[mid]["value"], known[mid]["category"])
+                    for mid in ids
+                ]
+                if merged_fact == facts[0] and any(fact != merged_fact for fact in facts[1:]):
+                    continue
+                operations.append({
+                    "op": "update",
+                    "id": ids[0],
+                    "key": key,
+                    "value": value.strip(),
+                    "term": "long",
+                    "scope": "global",
+                    "category": category,
+                    "reason": str(item.get("reason") or "").strip()[:400],
+                })
+                for memory_id in ids[1:]:
+                    operations.append({"op": "delete", "id": memory_id})
+                used.update(ids)
+                groups += 1
+            return operations, groups
+        except ValueError:
+            if len(batch) <= 1:
+                raise
+            middle = len(batch) // 2
+            left, left_groups = self._merge_batch(batch[:middle], known)
+            right, right_groups = self._merge_batch(batch[middle:], known)
+            return left + right, left_groups + right_groups
+
+    def _condense_batch(self, batch: list[dict], known: dict[str, dict]) -> list[dict]:
+        batch_ids = {row["id"] for row in batch}
+        try:
+            payload = json.dumps(batch, ensure_ascii=False)
+            data = self._dream_completion_retry(
+                "Split each long memory below into short entries. Keep every "
+                "fact. Do not delete the original; update it with the first "
+                "part.\n\n" + payload,
+                CONCISE_SYSTEM_PROMPT,
+            )
+            operations = []
+            for item in data["operations"]:
+                op = str(item.get("op") or "").strip().lower()
+                if op == "delete":
+                    continue
+                memory_id = str(item.get("id") or "").strip()
+                if op == "update" and memory_id not in batch_ids:
+                    continue
+                operations.append(item)
+            return self._dream_changes(operations, known)
+        except ValueError:
+            if len(batch) <= 1:
+                raise
+            middle = len(batch) // 2
+            return (
+                self._condense_batch(batch[:middle], known)
+                + self._condense_batch(batch[middle:], known)
+            )
+
+    def concise_agent_memory(self) -> dict:
+        memories = self.agent_memories().get("memories") or []
+        counts = {"create": 0, "update": 0, "delete": 0}
+        if not memories:
+            return {
+                "summary": "No memories to condense.",
+                "scanned": 0,
+                "changes": [],
+                "counts": counts,
+            }
+        known: dict[str, dict] = {}
+        long_entries: list[dict] = []
+        for item in memories:
+            memory_id = str(item.get("id") or "").strip()
+            if not memory_id:
+                continue
+            row = {"id": memory_id, **self._memory_snapshot(item)}
+            known[memory_id] = row
+            if (
+                row["term"] != "short"
+                and row["scope"] == "global"
+                and len(row["value"]) > 400
+            ):
+                long_entries.append(row)
+        if not long_entries:
+            return {
+                "summary": "Every long-term memory is already 400 characters or less.",
+                "scanned": len(memories),
+                "changes": [],
+                "counts": counts,
+            }
+        long_entries.sort(key=lambda row: len(row["value"]), reverse=True)
+        batches: list[list[dict]] = []
+        batch: list[dict] = []
+        batch_chars = 0
+        for row in long_entries:
+            size = len(row["key"]) + len(row["value"])
+            if batch and (len(batch) >= 6 or batch_chars + size > 12_000):
+                batches.append(batch)
+                batch = []
+                batch_chars = 0
+            batch.append(row)
+            batch_chars += size
+        if batch:
+            batches.append(batch)
+        changes: list[dict] = []
+        for batch in batches:
+            changes.extend(self._condense_batch(batch, known))
+        if len(changes) > DREAM_MAX_CHANGES:
+            raise ValueError(f"too many changes (the limit is {DREAM_MAX_CHANGES})")
+        counts = {
+            name: sum(1 for change in changes if change["op"] == name)
+            for name in ("create", "update", "delete")
+        }
+        return {
+            "summary": (
+                f"Condensed {len(long_entries)} long memories into "
+                f"{len(changes)} changes. Nothing is saved until you apply."
+            ),
+            "scanned": len(long_entries),
+            "request_id": secrets.token_hex(16),
+            "changes": changes,
+            "counts": counts,
+        }
+
+    def _category_index(self, memories, projected: dict) -> tuple[dict, dict]:
+        long_term = [row for row in memories
+                     if row.get("scope") == "global" and row.get("term", "long") == "long"]
+        index = next((row for row in long_term if self._is_memory_index(row)), None)
+        counts = {name: 0 for name in MEMORY_CATEGORIES}
+        for row in long_term:
+            category = projected.get(row["id"], row.get("category") or "general")
+            if row is index:
+                category = "reference"
+            counts[category] = counts.get(category, 0) + 1
+        if index is None:
+            counts["reference"] += 1
+        total = sum(counts.values())
+        today = time.strftime("%Y-%m-%d")
+        summary = "；".join(
+            f"{MEMORY_CATEGORY_TITLES[name]} {counts[name]}"
+            for name in MEMORY_CATEGORIES if counts[name]
+        )
+        legend = "；".join(
+            f"{name}={MEMORY_CATEGORY_TITLES[name]}" for name in MEMORY_CATEGORIES
+        )
+        change = {
+            "op": "create" if index is None else "update",
+            "key": MEMORY_INDEX_KEY,
+            "value": (f"记忆库分类索引（{today}）：长期记忆 {total} 条。{summary}。"
+                      f"分类：{legend}。按分类筛选或搜索 key。"),
+            "term": "long",
+            "scope": "global",
+            "category": "reference",
+            "reason": "Rebuild the memory category index.",
+        }
+        if index is not None:
+            change["id"] = index["id"]
+        return change, {"total": total, "counts": counts}
+
+    def refresh_memory_index(self) -> dict:
+        # The management list is paged; the index counts every global memory.
+        memories = self.agent_memories(scope="global", limit=-1).get("memories") or []
+        known = {row["id"]: row for row in memories}
+        operation, result = self._category_index(memories, {})
+        changes = self._dream_changes([operation], known)
+        if changes:
+            self._apply_memory_batch(secrets.token_hex(16), changes)
+        return result
+
+    def _apply_memory_batch(self, request_id: str, changes: list, guards: list | None = None) -> dict:
+        if not isinstance(request_id, str) or not request_id:
+            raise ValueError("generate a new memory preview before applying")
+        operations = []
+        fields = ("key", "value", "category", "term", "scope", "session_id")
+        for change in changes:
+            if not isinstance(change, dict):
+                raise ValueError("each change must be an object")
+            op = change.get("op")
+            if op not in ("create", "update", "delete"):
+                raise ValueError(f"unknown memory operation: {op}")
+            operation = {"op": op}
+            if op != "create":
+                expected = change.get("expected")
+                if not isinstance(expected, dict) or not all(k in expected for k in fields):
+                    raise ValueError("generate a new memory preview before applying")
+                operation.update(id=change.get("id"), expected=expected)
+            if op != "delete":
+                operation.update({key: change[key] for key in fields if key in change})
+            if op == "create" and self._is_memory_index(operation):
+                operation["if_absent"] = True
+            operations.append(operation)
+        payload = {"request_id": request_id, "changes": operations}
+        if guards:
+            payload["guards"] = guards
+        port, key = self._agent_target()
+        status, result = mcp.http_json(
+            f"http://127.0.0.1:{port}/v1/agent/memories/batch",
+            method="POST", body=payload, api_key=key, timeout=60,
+        )
+        if status == 409:
+            raise ValueError("memory changed since preview; generate a new preview")
+        if status in (404, 405):
+            raise ValueError("update the agent sidecar to apply memory previews")
+        if status != 200 or not isinstance(result, dict):
+            raise ValueError(f"cannot apply the memory batch (HTTP {status})")
+        return result
+
+    def apply_agent_memory_dream(self, body: dict) -> dict:
+        changes = body.get("changes")
+        if not isinstance(changes, list):
+            raise ValueError("changes must be a list")
+        if len(changes) > DREAM_MAX_CHANGES:
+            raise ValueError(f"too many changes (the limit is {DREAM_MAX_CHANGES})")
+        result = self._apply_memory_batch(body.get("request_id"), changes, body.get("guards"))
+        if body.get("refresh_index"):
+            try:
+                result["index"] = self.refresh_memory_index()
+            except ValueError as error:
+                raise ValueError(
+                    f"memory changes were applied; retry this preview to refresh the index ({error})"
+                ) from error
+        return result
 
     def rename_agent_session(self, session_id: str, title: str) -> dict:
         session_id = str(session_id or "").strip()
@@ -1323,6 +2226,16 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(200, self._app().update_agent_memory(body))
             elif path == "/api/agent/memory/delete":
                 self._json(200, self._app().delete_agent_memory(body.get("id", "")))
+            elif path == "/api/agent/memory/dream":
+                self._json(200, self._app().dream_agent_memory())
+            elif path == "/api/agent/memory/merge":
+                self._json(200, self._app().merge_agent_memory())
+            elif path == "/api/agent/memory/classify":
+                self._json(200, self._app().classify_agent_memory())
+            elif path == "/api/agent/memory/condense":
+                self._json(200, self._app().concise_agent_memory())
+            elif path == "/api/agent/memory/dream/apply":
+                self._json(200, self._app().apply_agent_memory_dream(body))
             elif path == "/api/sessions/save":
                 self._json(200, self._app().save_session(body))
             elif path == "/api/sessions/delete":

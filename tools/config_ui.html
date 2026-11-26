@@ -274,6 +274,12 @@ pre{background:var(--td-bg-color-page);border-color:var(--td-border-level-1-colo
 .scope-empty b{display:block;margin-bottom:6px}
 .scope-empty p{margin:0 0 12px}
 .access-actions{display:flex;align-items:center;gap:16px;justify-content:space-between;flex-wrap:wrap}
+.dream-preview{border:1px solid var(--td-warning-color);border-radius:var(--td-radius-medium);padding:12px;margin:0 0 14px;background:color-mix(in srgb,var(--td-warning-color) 6%,var(--td-bg-color-container))}
+.dream-preview h3{margin:0 0 8px;font-size:14px}
+.dream-preview .dream-row{border-top:1px solid var(--td-border-level-1-color);padding:9px 0}
+.dream-preview .dream-row:first-of-type{border-top:0}
+.dream-preview .dream-before{color:var(--td-text-color-secondary);text-decoration:line-through;white-space:pre-wrap}
+.dream-preview .dream-after{white-space:pre-wrap}
 .memory-search-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:end;margin-bottom:12px}
 .memory-search-row .field{width:100%;min-width:0;margin:0}
 .memory-search-row input{width:100%;min-width:0}
@@ -724,6 +730,14 @@ label.field .scope-source-row { display: grid; grid-template-columns: minmax(0, 
         <label class="field"><span>Search key or value</span><input id="am-search" type="search" placeholder="memory key or text"></label>
         <button class="btn primary" id="am-refresh">Refresh</button>
       </div>
+      <div class="row">
+          <button class="btn" id="am-merge">Merge</button>
+          <button class="btn" id="am-condense">Condense</button>
+          <button class="btn" id="am-classify">Classify</button>
+          <button class="btn" id="am-dream">Dreaming</button>
+        </div>
+        <div class="note">Classify assigns one category to every memory without changing its text. Condense splits long entries into short facts. Dreaming reviews both tiers, promotes durable session facts, merges duplicates, and rebuilds the index. Nothing is saved until you apply it.</div>
+        <div id="dream-preview" class="dream-preview" hidden></div>
       <div id="agent-memory-list"><p class="muted">Loading...</p></div>
       <div class="note">These entries are stored in the Lum agent database and can be injected into chat prompts by relevance. Forget removes one from future prompts.</div>
     </div>
@@ -773,6 +787,27 @@ if (urlLang === "en" || urlLang === "zh") localStorage.setItem(LANG_KEY, urlLang
 let LANG = localStorage.getItem(LANG_KEY) || "en";
 let translating = false;
 const ZH = {
+  "Dreaming": "梦境整理",
+  "Dreaming...": "整理中...",
+  "Classify": "分类整理",
+  "Classification proposed": "分类建议",
+  "Memory is already classified.": "记忆已经分好类。",
+  "Condense": "精简",
+  "Condense proposed": "精简建议",
+  "Memory is already concise.": "记忆已经足够精简。",
+  "Merge": "合并",
+  "Merge proposed": "合并建议",
+  "No related memories to merge.": "没有可合并的相关记忆。",
+  "Classify assigns one category to every memory without changing its text. Condense splits long entries into short facts. Dreaming reviews both tiers, promotes durable session facts, merges duplicates, and rebuilds the index. Nothing is saved until you apply it.": "分类整理只给每条记忆分配一个分类，不改内容；精简会把长条目拆成短事实；Dreaming 同时整理会话记忆和长期记忆，提升值得长期保留的会话事实、合并重复项并重建索引。应用之前不会保存。",
+  "Dreaming reviews session memory and long-term memory together. It promotes durable session facts, merges duplicates, splits mixed entries, and rewrites values for clarity. Facts are never added. You see every change first; nothing is saved until you apply it.": "Dreaming 会一起整理会话记忆和长期记忆：把值得长期保留的会话事实转为长期记忆，合并重复条目，拆分混合条目，并改写内容使其更清楚。不会添加新事实。先预览全部修改，应用之前不会保存。",
+  "Dreaming proposed changes": "Dreaming 建议的修改",
+  "Memory is already organized.": "记忆已经整理好了。",
+  "Before": "原值",
+  "After": "修改后",
+  "Apply changes": "应用修改",
+  "Applying...": "正在应用...",
+  "Discard": "放弃修改",
+  "Applied changes:": "已应用修改数：",
   "Lum Settings": "Lum 设置",
   "Settings": "设置",
   "Language": "语言",
@@ -1698,6 +1733,241 @@ async function saveAgentMemory() {
     await loadAgentMemory();
     toast("Memory saved.");
   } catch (e) { toast(e.message, true); }
+}
+
+function memoryCategoryLabel(name) {
+  return tr(name || "general");
+}
+
+let dreamPreview = null;
+
+function dreamSummary(data) {
+  const changes = data.changes || [];
+  const counts = data.counts || {};
+  const parts = [];
+  if (counts.update) parts.push(LANG === "zh" ? `更新 ${counts.update}` : `${counts.update} updated`);
+  if (counts.create) parts.push(LANG === "zh" ? `新增 ${counts.create}` : `${counts.create} new`);
+  if (counts.delete) parts.push(LANG === "zh" ? `删除 ${counts.delete}` : `${counts.delete} removed`);
+  if (data.promoted) parts.push(LANG === "zh" ? `转长期 ${data.promoted}` : `${data.promoted} promoted`);
+  const detail = parts.join(LANG === "zh" ? "，" : ", ");
+  if (LANG === "zh") {
+    return `Dreaming 建议 ${changes.length} 项修改${detail ? `（${detail}）` : ""}；应用前不会保存。`;
+  }
+  return `Dreaming proposed ${changes.length} changes${detail ? ` (${detail})` : ""}. Nothing is saved until you apply it.`;
+}
+
+function dreamError(message) {
+  const text = String(message || "");
+  if (LANG !== "zh") return text;
+  const exact = {
+    "each change must be an object": "每条修改必须是对象",
+    "memory changed since preview; generate a new preview": "预览后记忆已变更，请重新生成预览。",
+    "generate a new memory preview before applying": "请先重新生成记忆预览，再应用修改。",
+    "update the agent sidecar to apply memory previews": "请更新 Agent 后端，再应用记忆预览。",
+    "no running model": "没有正在运行的模型",
+    "no API key configured for the running model": "当前模型没有配置 API Key",
+    "the model returned invalid JSON": "模型返回的 JSON 无效",
+    "the model did not return a JSON object": "模型没有返回 JSON 对象",
+    "the model returned no entries": "模型没有返回任何记忆条目",
+    "the model returned no answer": "模型没有返回内容",
+    "the model returned an empty answer": "模型返回了空内容",
+    "the selected memories are too large to dream at once": "选中的记忆太多，无法一次 Dreaming",
+    "changes must be a list": "修改列表格式不正确",
+    "a memory value cannot be empty": "记忆内容不能为空",
+    "a memory value is too long": "记忆内容太长",
+    "a memory key cannot be empty": "记忆的 key 不能为空",
+    "a memory key is too long": "记忆的 key 太长",
+    "a new memory needs a key": "新记忆需要 key",
+    "a new short-term memory needs an existing session": "新的短期记忆需要已有会话",
+    "term must be long or short": "期限必须是长期或短期",
+    "a new memory value is too long": "新的记忆内容太长"
+  };
+  if (exact[text]) return exact[text];
+  let match;
+  if ((match = /^memory changes were applied; retry this preview to refresh the index \((.*)\)$/.exec(text))) {
+    return `记忆修改已保存。可再次应用此预览以刷新分类索引（${dreamError(match[1])}）。`;
+  }
+  if ((match = /^the model could not dream the memories \(HTTP (\d+)\)$/.exec(text))) {
+    return `模型无法完成 Dreaming（HTTP ${match[1]}）`;
+  }
+  if ((match = /^too many memories to dream at once \((\d+); the limit is (\d+)\)$/.exec(text))) {
+    return `记忆太多，无法一次 Dreaming（${match[1]} 条，上限 ${match[2]} 条）`;
+  }
+  if ((match = /^the selected memories are too large to dream at once \((\d+) characters; the limit is (\d+)\)$/.exec(text))) {
+    return `记忆内容太多，无法一次 Dreaming（${match[1]} 字符，上限 ${match[2]} 字符）`;
+  }
+  if ((match = /^too many changes \(the limit is (\d+)\)$/.exec(text))) {
+    return `修改太多（上限 ${match[1]} 条）`;
+  }
+  if ((match = /^memory not found: (.+)$/.exec(text))) {
+    return `找不到记忆：${match[1]}`;
+  }
+  if ((match = /^a short-term memory needs an existing session: (.+)$/.exec(text))) {
+    return `短期记忆需要已有会话：${match[1]}`;
+  }
+  if ((match = /^memory is changed twice: (.+)$/.exec(text))) {
+    return `同一条记忆被修改了两次：${match[1]}`;
+  }
+  if ((match = /^memory is updated and deleted: (.+)$/.exec(text))) {
+    return `同一条记忆不能同时修改和删除：${match[1]}`;
+  }
+  if ((match = /^unknown memory operation: (.+)$/.exec(text))) {
+    return `未知的记忆操作：${match[1]}`;
+  }
+  return text;
+}
+
+function renderDreamPreview(data) {
+  const changes = data.changes || [];
+  dreamPreview = data;
+  const preview = $("dream-preview");
+  if (!changes.length) {
+    preview.hidden = true;
+    preview.innerHTML = "";
+    return;
+  }
+  const row = (change) => {
+    const label = change.op === "create" ? tr("New")
+      : change.op === "delete" ? tr("Remove") : tr("Update");
+    const term = change.term
+      ? `<span class="tag">${esc(tr(change.term === "long" ? "Long-term" : "Short-term"))}</span>` : "";
+    const category = change.category
+      ? `<span class="tag">${esc(memoryCategoryLabel(change.category))}</span>` : "";
+    const reason = change.reason
+      ? `<div class="small muted">${esc(change.reason)}</div>` : "";
+    let body = "";
+    if (change.op === "create") {
+      body = `<div class="dream-after">${esc(change.value || "")}</div>`;
+    } else if (change.op === "delete") {
+      body = `<div class="dream-before">${esc(change.before || change.value || "")}</div>`;
+    } else {
+      const renamed = change.before_key && change.key && change.before_key !== change.key
+        ? `<div class="small muted">${esc(change.before_key)} → ${esc(change.key)}</div>` : "";
+      const recategorized = change.before_category && change.category &&
+        change.before_category !== change.category
+        ? `<div class="small muted">${esc(memoryCategoryLabel(change.before_category))} → ${esc(memoryCategoryLabel(change.category))}</div>`
+        : "";
+      const valueChanged = (change.before || "") !== (change.value || "");
+      body = `${renamed}${recategorized}
+        ${valueChanged ? `
+          <div class="small muted" style="margin-top:6px">${esc(tr("Before"))}</div>
+          <div class="dream-before">${esc(change.before || "")}</div>
+          <div class="small muted" style="margin-top:6px">${esc(tr("After"))}</div>
+          <div class="dream-after">${esc(change.value || "")}</div>` : ""}`;
+    }
+    return `<details class="dream-row">
+      <summary><b>${esc(label)} · ${esc(change.key || "(untitled)")}</b> ${category} ${term}</summary>
+      ${reason}${body}
+    </details>`;
+  };
+  preview.innerHTML = `<h3>${esc(tr("Dreaming proposed changes"))} <span class="muted small">${esc(dreamSummary(data))}</span></h3>
+    <div>${changes.map(row).join("")}</div>
+    <div class="row" style="margin-top:10px">
+      <button class="btn primary" id="dream-apply">${esc(tr("Apply changes"))}</button>
+      <button class="btn" id="dream-cancel">${esc(tr("Discard"))}</button>
+    </div>`;
+  preview.hidden = false;
+  $("dream-apply").addEventListener("click", applyDreaming);
+  $("dream-cancel").addEventListener("click", () => {
+    dreamPreview = null;
+    preview.hidden = true;
+    preview.innerHTML = "";
+  });
+}
+
+async function mergeAgentMemory() {
+  const buttons = [$("am-merge"), $("sm-merge")].filter(Boolean);
+  buttons.forEach((button) => { button.disabled = true; });
+  try {
+    const data = await api("/api/agent/memory/merge", {method: "POST", body: "{}"});
+    renderDreamPreview(data);
+    toast(data.changes && data.changes.length
+      ? tr("Merge proposed") : tr("No related memories to merge."));
+  } catch (e) {
+    toast(dreamError(e.message), true);
+  } finally {
+    buttons.forEach((button) => { button.disabled = false; });
+  }
+}
+
+async function condenseAgentMemory() {
+  const buttons = [$("am-condense"), $("sm-condense")].filter(Boolean);
+  buttons.forEach((button) => { button.disabled = true; });
+  try {
+    const data = await api("/api/agent/memory/condense", {method: "POST", body: "{}"});
+    renderDreamPreview(data);
+    toast(data.changes && data.changes.length
+      ? tr("Condense proposed") : tr("Memory is already concise."));
+  } catch (e) {
+    toast(dreamError(e.message), true);
+  } finally {
+    buttons.forEach((button) => { button.disabled = false; });
+  }
+}
+
+async function classifyAgentMemory() {
+  const buttons = [$("am-classify"), $("sm-classify")].filter(Boolean);
+  buttons.forEach((button) => { button.disabled = true; });
+  try {
+    const data = await api("/api/agent/memory/classify", {method: "POST", body: "{}"});
+    renderDreamPreview(data);
+    toast(data.changes && data.changes.length
+      ? tr("Classification proposed") : tr("Memory is already classified."));
+  } catch (e) {
+    toast(dreamError(e.message), true);
+  } finally {
+    buttons.forEach((button) => { button.disabled = false; });
+  }
+}
+
+async function dreamAgentMemory() {
+  const button = $("am-dream");
+  button.disabled = true;
+  button.textContent = tr("Dreaming...");
+  try {
+    const data = await api("/api/agent/memory/dream", {method: "POST", body: "{}"});
+    renderDreamPreview(data);
+    toast(data.changes && data.changes.length ? tr("Dreaming proposed changes") : tr("Memory is already organized."));
+  } catch (e) {
+    toast(dreamError(e.message), true);
+  } finally {
+    button.disabled = false;
+    button.textContent = tr("Dreaming");
+  }
+}
+
+async function applyDreaming() {
+  if (!dreamPreview?.changes.length) return;
+  const button = $("dream-apply");
+  const preview = dreamPreview;
+  button.disabled = true;
+  button.textContent = tr("Applying...");
+  try {
+    const changes = preview.changes.map(({op, id, expected, key, value, category, scope, term, session_id}) =>
+      op === "delete" ? {op, id, expected} : {op, id, expected, key, value, category, scope, term, session_id});
+    const result = await api("/api/agent/memory/dream/apply", {
+      method: "POST",
+      body: JSON.stringify({request_id: preview.request_id, changes, guards: preview.guards, refresh_index: true})
+    });
+    if (dreamPreview === preview) {
+      dreamPreview = null;
+      $("dream-preview").hidden = true;
+      $("dream-preview").innerHTML = "";
+    }
+    await loadAgentMemory();
+    const indexNote = result.index && result.index.total != null
+      ? (LANG === "zh" ? `；索引已更新（${result.index.total} 条）`
+                       : `; index rebuilt (${result.index.total})`)
+      : "";
+    const applied = LANG === "zh"
+      ? `新增 ${result.created ?? 0}，更新 ${result.updated ?? 0}，删除 ${result.deleted ?? 0}`
+      : `${result.created ?? 0} new, ${result.updated ?? 0} updated, ${result.deleted ?? 0} removed`;
+    toast(`${tr("Applied changes:")} ${applied}${indexNote}`);
+  } catch (e) {
+    button.disabled = false;
+    button.textContent = tr("Apply changes");
+    toast(dreamError(e.message), true);
+  }
 }
 
 async function loadAgentMemory() {
@@ -2956,6 +3226,10 @@ $("s-clear").addEventListener("click", async () => {
 $("am-save").addEventListener("click", saveAgentMemory);
 $("am-new").addEventListener("click", clearAgentForm);
 $("am-refresh").addEventListener("click", loadAgentMemory);
+$("am-merge").addEventListener("click", mergeAgentMemory);
+$("am-condense").addEventListener("click", condenseAgentMemory);
+$("am-classify").addEventListener("click", classifyAgentMemory);
+$("am-dream").addEventListener("click", dreamAgentMemory);
 $("am-search").addEventListener("keydown", (e) => {
   if (e.key === "Enter") {
     e.preventDefault();
